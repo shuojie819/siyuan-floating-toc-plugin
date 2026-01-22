@@ -489,7 +489,7 @@ export default class FloatingTocPlugin extends Plugin {
     private createToc(protyleElement: HTMLElement, docId: string) {
         // Create container
         const container = document.createElement("div");
-        container.className = "syplugin-floating-toc-container";
+        container.className = "siyuan-floating-toc-plugin-container";
         protyleElement.appendChild(container);
 
         // Create TOC component

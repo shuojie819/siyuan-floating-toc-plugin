@@ -1,5 +1,5 @@
 {
-  "name": "syplugin-floating-toc",
+  "name": "siyuan-floating-toc-plugin",
   "version": "0.1.0",
   "type": "module",
   "description": "Floating Table of Contents for SiYuan Note",
