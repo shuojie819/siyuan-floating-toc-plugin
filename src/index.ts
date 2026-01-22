@@ -7,6 +7,8 @@ import FloatingToc from "./FloatingToc.svelte";
  */
 export default class FloatingTocPlugin extends Plugin {
     private tocInstances: Map<HTMLElement, FloatingToc> = new Map();
+    private tocDocIds: Map<HTMLElement, string> = new Map();
+    private tocVisible = true;
     private observer: MutationObserver | undefined;
     private switchProtyleHandler: (event: CustomEvent<any>) => void;
     private checkProtylesDebounceTimer: number | undefined;
@@ -78,54 +80,48 @@ export default class FloatingTocPlugin extends Plugin {
             toc.$destroy();
         });
         this.tocInstances.clear();
+        this.tocDocIds.clear();
     }
 
-    /**
-     * 处理 protyle 加载完成事件
-     */
     private onLoadedProtyle(event: CustomEvent<any>) {
         const protyle = event.detail.protyle;
         if (protyle && protyle.element) {
             console.log("Floating TOC: onLoadedProtyle - protyle.block.rootID:", protyle.block?.rootID, "protyle.element:", protyle.element);
             
-            // 检查是否是搜索预览中的 protyle
-            const isSearchPreview = protyle.element.closest(".search__preview") !== null;
+            // Search preview/document protyle
+            const isSearchPreview = protyle.element.closest(".search__preview, .search__doc") !== null;
             console.log("Floating TOC: onLoadedProtyle - isSearchPreview:", isSearchPreview);
             
-            // 检查是否已有实例
             let toc = this.tocInstances.get(protyle.element);
+            let resolvedDocId = this.getDocIdFromProtyleElement(protyle.element, protyle);
+            if (!resolvedDocId && this.isHistoryHost(protyle.element)) {
+                resolvedDocId = "history";
+            }
+            const prevDocId = this.tocDocIds.get(protyle.element);
+            const docKey = resolvedDocId ? this.getDocKeyForHost(protyle.element, resolvedDocId) : "";
+            const hadToc = !!toc;
             
             if (!toc) {
-                // 如果没有实例，创建新实例
-                if (protyle.block && protyle.block.rootID) {
+                if (resolvedDocId) {
                     console.log("Floating TOC: onLoadedProtyle - Creating new TOC instance");
-                    this.createToc(protyle.element, protyle.block.rootID);
+                    this.createToc(protyle.element, resolvedDocId);
                     toc = this.tocInstances.get(protyle.element);
                 }
             }
             
-            // 无论是否已有实例，都强制刷新数据，特别是搜索预览中的 protyle
-            if (toc && protyle.block && protyle.block.rootID) {
-                console.log("Floating TOC: onLoadedProtyle - Updating TOC with rootID:", protyle.block.rootID);
-                toc.updateHeadings(protyle.block.rootID, protyle);
-            }
-            
-            // 延迟再刷新一次，确保文档内容已完全加载（特别是搜索预览）
-            setTimeout(() => {
-                if (toc && protyle.block && protyle.block.rootID) {
-                    console.log("Floating TOC: onLoadedProtyle - Delayed update with rootID:", protyle.block.rootID);
-                    toc.updateHeadings(protyle.block.rootID, protyle);
+            if (toc && resolvedDocId && hadToc && prevDocId !== docKey) {
+                console.log("Floating TOC: onLoadedProtyle - Updating TOC with rootID:", resolvedDocId);
+                this.updateTocForHost(protyle.element, resolvedDocId, protyle, true);
+                
+                if (isSearchPreview) {
+                    setTimeout(() => {
+                        const finalDocId = this.getDocIdFromProtyleElement(protyle.element, protyle);
+                        if (finalDocId) {
+                            console.log("Floating TOC: onLoadedProtyle - Search preview delayed update with rootID:", finalDocId);
+                            this.updateTocForHost(protyle.element, finalDocId, protyle, true);
+                        }
+                    }, 200);
                 }
-            }, 300);
-            
-            // 对于搜索预览，再延迟一次更新，确保所有内容都已渲染完成
-            if (isSearchPreview) {
-                setTimeout(() => {
-                    if (toc && protyle.block && protyle.block.rootID) {
-                        console.log("Floating TOC: onLoadedProtyle - Search preview final update with rootID:", protyle.block.rootID);
-                        toc.updateHeadings(protyle.block.rootID, protyle);
-                    }
-                }, 500);
             }
         }
     }
@@ -134,40 +130,37 @@ export default class FloatingTocPlugin extends Plugin {
      * 开始周期性检查搜索预览的 TOC 更新
      */
     private startSearchPreviewCheck() {
-        // 每隔 150ms 检查一次搜索预览的 protyle 实例
+        // Reduced polling to avoid excessive outline requests.
         this.searchPreviewCheckInterval = window.setInterval(() => {
             this.checkSearchPreviewTOC();
-        }, 150);
+            this.checkHistoryPreviewTOC();
+        }, 800);
     }
 
     /**
      * 检查搜索预览的 TOC 是否需要更新
      */
     private checkSearchPreviewTOC() {
-        // 查找所有全局搜索对话框
-        const dialogs = Array.from(document.querySelectorAll(".b3-dialog--open[data-key='dialog-globalsearch']"));
-        dialogs.forEach(dialog => {
-            // 获取搜索预览中的 protyle 实例
-            const protyleElement = dialog.querySelector(".search__preview .protyle");
-            if (protyleElement instanceof HTMLElement) {
-                // 获取当前 protyle 的 rootID
-                const protyle = (protyleElement as any).protyle;
-                if (protyle && protyle.block && protyle.block.rootID) {
-                    const currentRootId = protyle.block.rootID;
-                    
-                    // 获取对应的 TOC 实例
-                    const toc = this.tocInstances.get(protyleElement);
-                    if (toc) {
-                        // 强制更新 TOC，无论之前的 ID 是什么
-                        toc.updateHeadings(currentRootId, protyle);
-                    } else {
-                        // 如果没有 TOC 实例，创建新实例
-                        this.createToc(protyleElement, currentRootId);
-                    }
-                }
-            }
+        const searchHosts = this.getSearchPreviewHosts();
+        searchHosts.forEach((protyleElement) => {
+            const docId = this.getDocIdFromProtyleElement(protyleElement);
+            if (!docId) return;
+            this.updateTocForHost(protyleElement, docId, (protyleElement as any).protyle);
         });
     }
+
+    private checkHistoryPreviewTOC() {
+        const historyHosts = this.getHistoryPreviewHosts();
+        historyHosts.forEach((protyleElement) => {
+            let docId = this.getDocIdFromProtyleElement(protyleElement);
+            if (!docId && this.isHistoryHost(protyleElement)) {
+                docId = "history";
+            }
+            if (!docId) return;
+            this.updateTocForHost(protyleElement, docId, (protyleElement as any).protyle);
+        });
+    }
+
 
     /**
      * 处理搜索结果切换事件
@@ -175,82 +168,44 @@ export default class FloatingTocPlugin extends Plugin {
     private handleSearchResultChange() {
         console.log("Floating TOC: handleSearchResultChange called");
         
-        // 查找所有全局搜索对话框
-        const dialogs = Array.from(document.querySelectorAll(".b3-dialog--open[data-key='dialog-globalsearch']"));
-        dialogs.forEach(dialog => {
-            console.log("Floating TOC: Found global search dialog");
-            
-            // 获取搜索预览中的 protyle 实例
-            const protyleElement = dialog.querySelector(".search__preview .protyle");
-            if (protyleElement instanceof HTMLElement) {
-                console.log("Floating TOC: Found search preview protyle element");
-                
-                // 直接从 protyle 实例获取文档 ID（思源原生方式，最可靠）
-                let rootId = "";
-                const protyle = (protyleElement as any).protyle;
-                if (protyle && protyle.block && protyle.block.rootID) {
-                    rootId = protyle.block.rootID;
-                    console.log("Floating TOC: Got rootId from protyle.block.rootID:", rootId);
-                }
-                
-                // 如果从 protyle 实例获取失败，从当前激活的搜索列表项获取
-                if (!rootId) {
-                    const activeItem = dialog.querySelector(".b3-list-item--focus");
-                    if (activeItem) {
-                        rootId = activeItem.getAttribute("data-root-id") || "";
-                        console.log("Floating TOC: Got rootId from active list item:", rootId);
-                    }
-                }
-                
-                // 如果还是没有，从面包屑中获取文档 ID
-                if (!rootId) {
-                    const breadcrumb = protyleElement.querySelector(".protyle-breadcrumb");
-                    if (breadcrumb) {
-                        // 面包屑中可能有多个项目，遍历所有项目寻找文档 ID
-                        const breadcrumbItems = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
-                        for (const item of breadcrumbItems) {
-                            if (item.getAttribute("data-node-id")) {
-                                rootId = item.getAttribute("data-node-id") || "";
-                                console.log("Floating TOC: Got rootId from breadcrumb:", rootId);
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // 从搜索列表的第一个项目获取（作为最后的后备）
-                if (!rootId) {
-                    const firstItem = dialog.querySelector(".b3-list-item");
-                    if (firstItem) {
-                        rootId = firstItem.getAttribute("data-root-id") || "";
-                        console.log("Floating TOC: Got rootId from first list item:", rootId);
-                    }
-                }
-                
-                if (rootId) {
-                    // 检查是否已有 TOC 实例
-                    let toc = this.tocInstances.get(protyleElement);
-                    if (toc) {
-                        // 无论当前 TOC 实例的文档 ID 是什么，都强制更新
-                        console.log("Floating TOC: Forcing TOC update with rootId:", rootId);
-                        toc.updateHeadings(rootId, { element: protyleElement });
-                        
-                        // 额外添加一个延迟更新，确保文档内容已完全渲染
-                        setTimeout(() => {
-                            console.log("Floating TOC: Delayed TOC update with rootId:", rootId);
-                            toc.updateHeadings(rootId, { element: protyleElement });
-                        }, 200);
-                    } else {
-                        // 创建新的 TOC 实例
-                        console.log("Floating TOC: Creating new TOC instance for rootId:", rootId);
-                        this.createToc(protyleElement, rootId);
-                    }
-                } else {
-                    console.warn("Floating TOC: Could not get rootId for search result");
-                }
+        const searchHosts = this.getSearchPreviewHosts();
+        if (searchHosts.length === 0) {
+            console.warn("Floating TOC: No search preview hosts found");
+        }
+        searchHosts.forEach((protyleElement) => {
+            const rootId = this.getDocIdFromProtyleElement(protyleElement);
+            if (!rootId) {
+                console.warn("Floating TOC: Could not get rootId for search result");
+                return;
             }
+            
+            console.log("Floating TOC: Updating search TOC with rootId:", rootId);
+            this.updateTocForHost(protyleElement, rootId, (protyleElement as any).protyle);
+            
+            setTimeout(() => {
+                const delayedRootId = this.getDocIdFromProtyleElement(protyleElement);
+                if (!delayedRootId) return;
+                console.log("Floating TOC: Delayed TOC update with rootId:", delayedRootId);
+                this.updateTocForHost(protyleElement, delayedRootId, (protyleElement as any).protyle);
+            }, 200);
         });
     }
+
+    private handleHistoryResultChange() {
+        const historyHosts = this.getHistoryPreviewHosts();
+        if (historyHosts.length === 0) {
+            return;
+        }
+        historyHosts.forEach((protyleElement) => {
+            let docId = this.getDocIdFromProtyleElement(protyleElement);
+            if (!docId && this.isHistoryHost(protyleElement)) {
+                docId = "history";
+            }
+            if (!docId) return;
+            this.updateTocForHost(protyleElement, docId, (protyleElement as any).protyle);
+        });
+    }
+
 
     /**
      * 监控 protyle 实例的创建和销毁
@@ -262,6 +217,7 @@ export default class FloatingTocPlugin extends Plugin {
         this.observer = new MutationObserver((mutations) => {
             let shouldCheck = false;
             let searchResultChanged = false;
+            let historyResultChanged = false;
             
             for (const mutation of mutations) {
                 if (mutation.type === 'childList') {
@@ -283,6 +239,19 @@ export default class FloatingTocPlugin extends Plugin {
                             if (node.classList.contains('b3-list-item') && 
                                 node.closest('.search__list')) {
                                 searchResultChanged = true;
+                            }
+                            if (node.classList.contains('history__panel') ||
+                                node.classList.contains('history__side') ||
+                                node.classList.contains('history__list') ||
+                                node.classList.contains('history__text') ||
+                                node.querySelector('.history__side') ||
+                                node.querySelector('.history__text')) {
+                                shouldCheck = true;
+                                historyResultChanged = true;
+                            }
+                            if (node.classList.contains('b3-list-item') &&
+                                node.closest('.history__side, .history__list, .history__repo')) {
+                                historyResultChanged = true;
                             }
                         }
                     }
@@ -314,8 +283,22 @@ export default class FloatingTocPlugin extends Plugin {
                         }
                         // 检查 protyle 内容变化
                         if (mutation.target.classList.contains('protyle-content') ||
-                            mutation.target.classList.contains('search__preview')) {
+                            mutation.target.classList.contains('search__preview') ||
+                            mutation.target.classList.contains('search__doc')) {
                             searchResultChanged = true;
+                            shouldCheck = true;
+                        }
+                        if (mutation.target.classList.contains('b3-list-item') &&
+                            mutation.attributeName === 'class' &&
+                            mutation.target.closest('.history__side, .history__list, .history__repo')) {
+                            historyResultChanged = true;
+                            shouldCheck = true;
+                        }
+                        if (mutation.target.classList.contains('history__side') ||
+                            mutation.target.classList.contains('history__list') ||
+                            mutation.target.classList.contains('history__text') ||
+                            mutation.target.classList.contains('history__panel')) {
+                            historyResultChanged = true;
                             shouldCheck = true;
                         }
                         // 检查 protyle 元素的数据属性变化
@@ -344,6 +327,12 @@ export default class FloatingTocPlugin extends Plugin {
                 setTimeout(() => {
                     this.handleSearchResultChange();
                 }, 600);
+            }
+            if (historyResultChanged) {
+                this.handleHistoryResultChange();
+                setTimeout(() => {
+                    this.handleHistoryResultChange();
+                }, 300);
             }
         });
         
@@ -386,6 +375,24 @@ export default class FloatingTocPlugin extends Plugin {
                 this.handleSearchResultChange();
                 setTimeout(() => {
                     this.handleSearchResultChange();
+                }, 200);
+            });
+        });
+        const searchDocs = document.querySelectorAll('.search__doc');
+        searchDocs.forEach(doc => {
+            doc.addEventListener('click', () => {
+                this.handleSearchResultChange();
+                setTimeout(() => {
+                    this.handleSearchResultChange();
+                }, 200);
+            });
+        });
+        const historyLists = document.querySelectorAll('.history__side, .history__list, .history__repo');
+        historyLists.forEach(list => {
+            list.addEventListener('click', () => {
+                this.handleHistoryResultChange();
+                setTimeout(() => {
+                    this.handleHistoryResultChange();
                 }, 200);
             });
         });
@@ -433,75 +440,45 @@ export default class FloatingTocPlugin extends Plugin {
      * 检查所有 protyle 实例，创建或销毁对应的 TOC
      */
     private checkProtyles() {
-        // 查找所有 protyle 实例，包括搜索预览中的
-        const protyles = Array.from(document.querySelectorAll(".protyle"));
+        const candidates = Array.from(document.querySelectorAll(".protyle, .search__preview, .search__doc, .history__text, .history__text .protyle, [data-type='docPanel'].history__text"));
+        const hostSet = new Set<HTMLElement>();
+        candidates.forEach((candidate) => {
+            if (!(candidate instanceof HTMLElement)) return;
+            const host = this.getTocHostElement(candidate);
+            if (host) hostSet.add(host);
+        });
+        const protyles = Array.from(hostSet);
         
-        // 1. 添加新实例
         protyles.forEach((p: HTMLElement) => {
             console.log("Floating TOC: checkProtyles - protyle:", p);
+            const content = p.querySelector(".protyle-content") || p.querySelector(".protyle-wysiwyg");
+            if (!content) return;
+            
+            let docId = this.getDocIdFromProtyleElement(p);
+            if (!docId && this.isHistoryHost(p)) {
+                docId = "history";
+            }
+            if (!docId) return;
             
             if (!this.tocInstances.has(p)) {
-                // 确保是有效的 protyle 编辑器
-                const content = p.querySelector(".protyle-content");
-                if (!content) return;
-                
-                // 获取文档 ID，多种方式尝试
-                let docId = content.getAttribute("data-node-id");
-                
-                // 如果没有直接的 data-node-id，尝试从 protyle 实例的 block 属性获取
-                if (!docId && (p as any).protyle && (p as any).protyle.block) {
-                    docId = (p as any).protyle.block.rootID;
-                }
-                
-                // 如果还是没有文档 ID，尝试从面包屑中获取所有项目
-                if (!docId) {
-                    const breadcrumb = p.querySelector(".protyle-breadcrumb");
-                    if (breadcrumb) {
-                        const breadcrumbItems = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
-                        for (const item of breadcrumbItems) {
-                            if (item.getAttribute("data-node-id")) {
-                                docId = item.getAttribute("data-node-id");
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // 对于搜索预览中的 protyle，尝试从最近的搜索列表项获取 root-id
-                if (!docId) {
-                    const dialog = p.closest(".b3-dialog");
-                    if (dialog) {
-                        // 先尝试获取当前激活的列表项
-                        let activeItem = dialog.querySelector(".b3-list-item--focus");
-                        if (activeItem) {
-                            docId = activeItem.getAttribute("data-root-id");
-                        }
-                        
-                        // 如果没有激活项，尝试获取第一个列表项
-                        if (!docId) {
-                            const firstItem = dialog.querySelector(".b3-list-item");
-                            if (firstItem) {
-                                docId = firstItem.getAttribute("data-root-id");
-                            }
-                        }
-                    }
-                }
-                
-                console.log("Floating TOC: checkProtyles - docId:", docId);
-                
-                if (docId) {
-                    console.log("Floating TOC: Creating TOC for protyle:", p, "with docId:", docId);
-                    this.createToc(p, docId);
+                console.log("Floating TOC: Creating TOC for protyle:", p, "with docId:", docId);
+                this.createToc(p, docId);
+            } else {
+                const lastDocId = this.tocDocIds.get(p);
+                const docKey = this.getDocKeyForHost(p, docId);
+                if (docKey !== lastDocId) {
+                    console.log("Floating TOC: Updating TOC for protyle:", p, "with new docId:", docId);
+                    this.updateTocForHost(p, docId, (p as any).protyle);
                 }
             }
         });
 
-        // 2. 移除不再存在的实例
         for (const [p, toc] of this.tocInstances.entries()) {
             if (!document.contains(p)) {
                 console.log("Floating TOC: Removing TOC for protyle:", p);
                 toc.$destroy();
                 this.tocInstances.delete(p);
+                this.tocDocIds.delete(p);
             }
         }
     }
@@ -510,12 +487,12 @@ export default class FloatingTocPlugin extends Plugin {
      * 创建 TOC 实例
      */
     private createToc(protyleElement: HTMLElement, docId: string) {
-        // 创建容器
+        // Create container
         const container = document.createElement("div");
         container.className = "syplugin-floating-toc-container";
         protyleElement.appendChild(container);
 
-        // 创建 TOC 组件
+        // Create TOC component
         const toc = new FloatingToc({
             target: container,
             props: {
@@ -523,9 +500,13 @@ export default class FloatingTocPlugin extends Plugin {
                 targetElement: protyleElement
             }
         });
+        if (typeof (toc as any).setVisible === "function") {
+            (toc as any).setVisible(this.tocVisible);
+        }
 
-        // 初始化数据
+        // Initialize data
         toc.updateHeadings(docId, { element: protyleElement });
+        this.tocDocIds.set(protyleElement, this.getDocKeyForHost(protyleElement, docId));
         
         this.tocInstances.set(protyleElement, toc);
     }
@@ -534,13 +515,14 @@ export default class FloatingTocPlugin extends Plugin {
      * 切换当前活动文档的 TOC 显示状态
      */
     private toggleToc() {
-        const activeProtyle = document.querySelector(".layout__wnd--active .protyle") as HTMLElement;
-        if (activeProtyle && this.tocInstances.has(activeProtyle)) {
-            const toc = this.tocInstances.get(activeProtyle);
-            if (toc) {
+        this.tocVisible = !this.tocVisible;
+        this.tocInstances.forEach((toc) => {
+            if (typeof (toc as any).setVisible === "function") {
+                (toc as any).setVisible(this.tocVisible);
+            } else if (typeof (toc as any).toggle === "function") {
                 (toc as any).toggle();
             }
-        }
+        });
     }
 
     /**
@@ -549,21 +531,260 @@ export default class FloatingTocPlugin extends Plugin {
     private onSwitchProtyle(event: CustomEvent<any>) {
         const protyle = event.detail.protyle;
         if (protyle && protyle.element) {
-            // 检查是否已有实例
             let toc = this.tocInstances.get(protyle.element);
+            const docId = this.getDocIdFromProtyleElement(protyle.element, protyle);
             
             if (!toc) {
-                // 可能是新窗口/标签页
-                if (protyle.block && protyle.block.rootID) {
-                    this.createToc(protyle.element, protyle.block.rootID);
+                if (docId) {
+                    this.createToc(protyle.element, docId);
                     toc = this.tocInstances.get(protyle.element);
                 }
             }
             
-            // 刷新数据
-            if (toc && protyle.block && protyle.block.rootID) {
-                toc.updateHeadings(protyle.block.rootID, protyle);
+            if (toc && docId) {
+                toc.updateHeadings(docId, protyle);
+                this.tocDocIds.set(protyle.element, this.getDocKeyForHost(protyle.element, docId));
             }
+        }
+    }
+
+    private getTocHostElement(candidate: HTMLElement): HTMLElement | null {
+        if (candidate.classList.contains("protyle")) return candidate;
+        const innerProtyle = candidate.querySelector(".protyle");
+        if (innerProtyle instanceof HTMLElement) return innerProtyle;
+        const docPanel = candidate.querySelector("[data-type='docPanel']");
+        if (docPanel instanceof HTMLElement && docPanel.querySelector(".protyle-content")) return docPanel;
+        const hasContent = candidate.querySelector(".protyle-content");
+        if (hasContent) return candidate;
+        return null;
+    }
+
+    private getSearchPreviewHosts(): HTMLElement[] {
+        const hostSet = new Set<HTMLElement>();
+        const candidates = document.querySelectorAll("#searchPreview, .search__preview, .search__doc");
+        candidates.forEach((candidate) => {
+            if (!(candidate instanceof HTMLElement)) return;
+            const host = this.getTocHostElement(candidate);
+            if (host) hostSet.add(host);
+        });
+        return Array.from(hostSet);
+    }
+
+    private getHistoryPreviewHosts(): HTMLElement[] {
+        const hostSet = new Set<HTMLElement>();
+        const candidates = document.querySelectorAll(
+            "#historyPreview, .history__text, .history__text.protyle, .history__text .protyle, [data-type='docPanel'].history__text, " +
+            ".b3-dialog--open[data-key='dialog-history'] .protyle, .b3-dialog--open[data-key='dialog-historydoc'] .protyle, " +
+            ".b3-dialog--open[data-key='dialog-history'] [data-type='docPanel'], .b3-dialog--open[data-key='dialog-historydoc'] [data-type='docPanel']"
+        );
+        candidates.forEach((candidate) => {
+            if (!(candidate instanceof HTMLElement)) return;
+            const host = this.getTocHostElement(candidate);
+            if (host) hostSet.add(host);
+        });
+        return Array.from(hostSet);
+    }
+
+    private isHistoryHost(element: HTMLElement): boolean {
+        if (element.classList.contains("history__text")) return true;
+        if (element.closest(".history__text")) return true;
+        if (element.closest(".history__panel, .history")) return true;
+        if (element.closest(".b3-dialog--open[data-key='dialog-history'], .b3-dialog--open[data-key='dialog-historydoc']")) return true;
+        return false;
+    }
+
+    private getHistorySnapshotKey(element: HTMLElement, docId: string): string {
+        const baseId = docId || "history";
+        const panel = element.closest(".history__panel, .history, .b3-dialog") || document;
+        const listContainer =
+            panel.querySelector(".history__side, .history__list, .history__repo") ||
+            panel;
+        const activeItem = listContainer.querySelector(
+            ".b3-list-item--focus, .b3-list-item--selected, .b3-list-item--current"
+        );
+        const item = (activeItem || listContainer.querySelector(".b3-list-item")) as HTMLElement | null;
+        const path = item?.getAttribute("data-path") || (item as any)?.dataset?.path;
+        if (path) return `${baseId}|${path}`;
+        return baseId;
+    }
+
+    private getHistoryContentSignature(element: HTMLElement): string {
+        const contentRoot =
+            element.querySelector(".protyle-content") ||
+            element;
+        const headingNodes = contentRoot.querySelectorAll(
+            '[data-type="NodeHeading"], h1, h2, h3, h4, h5, h6'
+        );
+        const count = headingNodes.length;
+        if (count === 0) return "c0";
+        const first = headingNodes[0] as HTMLElement;
+        const firstId =
+            first?.getAttribute?.("data-node-id") ||
+            first?.getAttribute?.("data-id") ||
+            first?.getAttribute?.("data-oid") ||
+            "";
+        return `c${count}:${firstId}`;
+    }
+
+    private getDocKeyForHost(element: HTMLElement, docId: string): string {
+        if (!docId) return "";
+        if (this.isHistoryHost(element)) {
+            const snapshotKey = this.getHistorySnapshotKey(element, docId);
+            const loading = element.getAttribute("data-loading") || "";
+            const signature = this.getHistoryContentSignature(element);
+            return `${snapshotKey}|${loading}|${signature}`;
+        }
+        return docId;
+    }
+
+
+    private getDocIdFromSearchContext(element: HTMLElement): string | null {
+        const searchContainer =
+            element.closest(".b3-dialog--open[data-key='dialog-globalsearch'], .search") || document;
+        const activeItem = searchContainer.querySelector(".search__list .b3-list-item--focus");
+        const fallbackItem = searchContainer.querySelector(".search__list .b3-list-item");
+        const item = (activeItem || fallbackItem) as HTMLElement | null;
+        if (!item) return null;
+        return (
+            item.getAttribute("data-root-id") ||
+            item.getAttribute("data-node-id") ||
+            item.getAttribute("data-doc-id")
+        );
+    }
+
+    private getDocIdFromHistoryContext(element: HTMLElement): string | null {
+        const panel = element.closest(".history__panel, .history, .b3-dialog") || document;
+        const listContainer =
+            panel.querySelector(".history__side, .history__list, .history__repo") ||
+            panel;
+
+        const activeItem = listContainer.querySelector(
+            ".b3-list-item--focus, .b3-list-item--selected, .b3-list-item--current"
+        );
+        let item = (activeItem || listContainer.querySelector(".b3-list-item")) as HTMLElement | null;
+
+        if (!item) return null;
+
+        const path = item.getAttribute("data-path") || (item as any).dataset?.path;
+        const fromPath = this.extractDocIdFromPath(path);
+        if (fromPath) return fromPath;
+
+        const itemDocId =
+            item.getAttribute("data-root-id") ||
+            item.getAttribute("data-node-id") ||
+            item.getAttribute("data-doc-id") ||
+            item.getAttribute("data-id");
+        if (itemDocId) return itemDocId;
+
+        const containerPath =
+            listContainer.getAttribute?.("data-path") ||
+            (listContainer as any).dataset?.path ||
+            panel.getAttribute?.("data-path") ||
+            (panel as any).dataset?.path ||
+            element.getAttribute?.("data-path") ||
+            (element as any).dataset?.path;
+        const fromContainerPath = this.extractDocIdFromPath(containerPath);
+        if (fromContainerPath) return fromContainerPath;
+
+        const pathNodes = Array.from(panel.querySelectorAll("[data-path]")) as HTMLElement[];
+        for (const node of pathNodes) {
+            const nodePath = node.getAttribute("data-path") || (node as any).dataset?.path;
+            const fromNodePath = this.extractDocIdFromPath(nodePath);
+            if (fromNodePath) return fromNodePath;
+        }
+
+        const titleInput = panel.querySelector(".protyle-title__input") as HTMLElement | null;
+        const titleId =
+            titleInput?.getAttribute("data-node-id") ||
+            titleInput?.getAttribute("data-doc-id") ||
+            titleInput?.getAttribute("data-id");
+        if (titleId) return titleId;
+
+        return null;
+    }
+
+    private extractDocIdFromPath(path: string | null | undefined): string {
+        if (!path) return "";
+        const match = String(path).match(/(?:^|[\\/])(\d{14}-[a-z0-9]{7})\.(?:syx|sy)$/i);
+        if (match) return match[1];
+        const allIds = String(path).match(/\d{14}-[a-z0-9]{7}/gi);
+        if (allIds && allIds.length > 0) {
+            return allIds[allIds.length - 1];
+        }
+        return "";
+    }
+
+
+    private getDocIdFromProtyleElement(protyleElement: HTMLElement, protyle?: any): string | null {
+        const content = protyleElement.querySelector(".protyle-content") as HTMLElement | null;
+        const wysiwyg = protyleElement.querySelector(".protyle-wysiwyg") as HTMLElement | null;
+        const docRoot = protyleElement.querySelector('[data-type="NodeDocument"]') as HTMLElement | null;
+        const titleInput = protyleElement.querySelector(".protyle-title__input") as HTMLElement | null;
+        const titleWrapper = protyleElement.querySelector(".protyle-title") as HTMLElement | null;
+
+        let docId =
+            content?.getAttribute("data-node-id") ||
+            content?.getAttribute("data-root-id") ||
+            content?.getAttribute("data-doc-id") ||
+            content?.getAttribute("data-id") ||
+            content?.getAttribute("data-oid") ||
+            wysiwyg?.getAttribute("data-node-id") ||
+            docRoot?.getAttribute("data-node-id") ||
+            docRoot?.getAttribute("data-id") ||
+            titleInput?.getAttribute("data-node-id") ||
+            titleInput?.getAttribute("data-doc-id") ||
+            titleInput?.getAttribute("data-id") ||
+            titleWrapper?.getAttribute("data-node-id") ||
+            titleWrapper?.getAttribute("data-doc-id") ||
+            titleWrapper?.getAttribute("data-id") ||
+            protyleElement.getAttribute("data-node-id") ||
+            protyleElement.getAttribute("data-root-id") ||
+            protyleElement.getAttribute("data-doc-id") ||
+            protyleElement.getAttribute("data-id") ||
+            protyleElement.getAttribute("data-oid") ||
+            "";
+
+        const protyleObj = protyle || (protyleElement as any).protyle;
+        if (!docId && protyleObj && protyleObj.block && protyleObj.block.rootID) {
+            docId = protyleObj.block.rootID;
+        }
+
+        if (!docId) {
+            const breadcrumb = protyleElement.querySelector(".protyle-breadcrumb");
+            if (breadcrumb) {
+                const breadcrumbItems = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
+                for (const item of breadcrumbItems) {
+                    const nodeId = item.getAttribute("data-node-id");
+                    if (nodeId) {
+                        docId = nodeId;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!docId) {
+            docId = this.getDocIdFromSearchContext(protyleElement) || this.getDocIdFromHistoryContext(protyleElement) || "";
+        }
+
+        return docId || null;
+    }
+
+    private updateTocForHost(host: HTMLElement, docId: string, protyle?: any, force: boolean = false) {
+        const docKey = this.getDocKeyForHost(host, docId);
+        const lastDocId = this.tocDocIds.get(host);
+        let toc = this.tocInstances.get(host);
+        if (toc && !force && lastDocId === docKey) {
+            return;
+        }
+        if (toc) {
+            toc.updateHeadings(docId, protyle || { element: host });
+        } else {
+            this.createToc(host, docId);
+            toc = this.tocInstances.get(host);
+        }
+        if (toc) {
+            this.tocDocIds.set(host, docKey || docId);
         }
     }
 
@@ -573,24 +794,17 @@ export default class FloatingTocPlugin extends Plugin {
     private handleBlockUpdate(event: CustomEvent<any>) {
         const data = event.detail;
         if (data && data.id) {
-            // 找到包含该块的 protyle
+            // Find the protyle that contains this block.
             const blockElement = document.querySelector(`[data-node-id="${data.id}"]`);
             if (blockElement) {
                 const protyleElement = blockElement.closest(".protyle") as HTMLElement;
                 if (protyleElement && this.tocInstances.has(protyleElement)) {
                     const toc = this.tocInstances.get(protyleElement);
                     if (toc) {
-                        // 获取文档 ID
-                        const content = protyleElement.querySelector(".protyle-content");
-                        let docId = content?.getAttribute("data-node-id");
-                        
-                        // 如果没有直接的 data-node-id，尝试从 protyle 实例的 block 属性获取
-                        if (!docId && (protyleElement as any).protyle && (protyleElement as any).protyle.block) {
-                            docId = (protyleElement as any).protyle.block.rootID;
-                        }
-                        
+                        const docId = this.getDocIdFromProtyleElement(protyleElement);
                         if (docId) {
                             toc.updateHeadings(docId, { element: protyleElement });
+                            this.tocDocIds.set(protyleElement, this.getDocKeyForHost(protyleElement, docId));
                         }
                     }
                 }

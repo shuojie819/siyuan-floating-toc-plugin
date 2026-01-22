@@ -5,11 +5,23 @@
   // This is the DOM element of the protyle instance this TOC belongs to
   export let targetElement: HTMLElement;
 
-  let headings: any[] = [];
+  type Heading = {
+      id: string;
+      content: string;
+      depth: number;
+      subType?: string;
+      element?: HTMLElement | null;
+  };
+
+  let headings: Heading[] = [];
   let visible = true;
 
   export const toggle = () => {
       visible = !visible;
+  };
+
+  export const setVisible = (value: boolean) => {
+      visible = value;
   };
 
   let currentDocId = "";
@@ -303,11 +315,87 @@
       return decoder.textContent || decoder.innerText || "";
   };
 
+  const isHistoryTarget = () => {
+      if (!targetElement) return false;
+      if (targetElement.classList.contains("history__text")) return true;
+      if (targetElement.closest(".history__text")) return true;
+      if (targetElement.closest(".history__panel, .history")) return true;
+      if (targetElement.closest(".b3-dialog--open[data-key='dialog-history'], .b3-dialog--open[data-key='dialog-historydoc']")) return true;
+      return false;
+  };
+
+  const parseHeadingDepth = (el: HTMLElement, fallback: number) => {
+      const tag = el.tagName ? el.tagName.toLowerCase() : "";
+      if (/^h[1-6]$/.test(tag)) {
+          return parseInt(tag.slice(1), 10);
+      }
+      const subtype =
+          el.getAttribute("data-subtype") ||
+          el.getAttribute("data-subType") ||
+          el.getAttribute("data-type") ||
+          "";
+      const match = subtype.match(/h([1-6])/i);
+      if (match) return parseInt(match[1], 10);
+      const level =
+          el.getAttribute("data-level") ||
+          el.getAttribute("aria-level") ||
+          "";
+      const parsed = parseInt(level, 10);
+      return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const collectHeadingsFromDom = (root: HTMLElement): Heading[] => {
+      const contentRoot =
+          (root.querySelector(".protyle-content") as HTMLElement | null) || root;
+      const elements = Array.from(
+          contentRoot.querySelectorAll('[data-type="NodeHeading"], h1, h2, h3, h4, h5, h6')
+      ) as HTMLElement[];
+      const list: Heading[] = [];
+      let syntheticIndex = 0;
+      elements.forEach((el) => {
+          if (el.tagName && /^h[1-6]$/i.test(el.tagName)) {
+              const parentHeading = el.closest('[data-type="NodeHeading"]');
+              if (parentHeading && parentHeading !== el) {
+                  return;
+              }
+          }
+          const id =
+              el.getAttribute("data-node-id") ||
+              el.getAttribute("data-id") ||
+              el.getAttribute("data-oid") ||
+              `__toc_dom_${syntheticIndex++}`;
+          const depth = parseHeadingDepth(el, 1);
+          const content = getPlainText(el.innerHTML || el.textContent || "");
+          list.push({
+              id,
+              content: content || "Untitled",
+              depth: depth || 1,
+              subType:
+                  el.getAttribute("data-subtype") ||
+                  el.getAttribute("data-subType") ||
+                  (el.tagName ? el.tagName.toLowerCase() : undefined),
+              element: el
+          });
+      });
+      return list;
+  };
+
   export const updateHeadings = async (docId: string, protyle?: any) => {
-    if (!docId) return;
+    if (docId) {
+      currentDocId = docId;
+    }
     
     try {
-      currentDocId = docId;
+      if (isHistoryTarget() && targetElement) {
+        const domHeadings = collectHeadingsFromDom(targetElement);
+        headings = [];
+        await new Promise(resolve => setTimeout(resolve, 0));
+        headings = domHeadings;
+        return;
+      }
+
+      if (!docId) return;
+
       const response = await fetch("/api/outline/getDocOutline", {
         method: "POST",
         body: JSON.stringify({ id: docId }),
@@ -396,10 +484,15 @@
     // 3. 延迟执行跳转，确保编辑器状态稳定
     setTimeout(() => {
       // 4. 查找目标元素，使用更严格的条件
-      const targetElements = document.querySelectorAll(`[data-node-id="${heading.id}"]`);
       let targetBlock: Element | null = null;
+      if (heading.element && document.contains(heading.element)) {
+        targetBlock = heading.element;
+      }
+
+      const searchRoot: ParentNode = targetElement || document;
+      const targetElements = targetBlock ? [] : searchRoot.querySelectorAll(`[data-node-id="${heading.id}"]`);
       
-      for (const element of targetElements) {
+      for (const element of Array.from(targetElements)) {
         // 跳过嵌入块、不可见元素
         if (element.closest('.protyle-embed') || 
             element.offsetParent === null || 
@@ -463,16 +556,24 @@
           const contentElement = targetElement.querySelector(".protyle-content");
           if (!contentElement) return;
     
-          const headingElements = Array.from(contentElement.querySelectorAll('[data-type="NodeHeading"]'));
+          const useDomHeadings = isHistoryTarget();
+          const headingElements = useDomHeadings
+              ? headings.map(h => h.element).filter((el): el is HTMLElement => !!el)
+              : Array.from(contentElement.querySelectorAll('[data-type="NodeHeading"]')) as HTMLElement[];
           
           let currentActiveId = "";
           const contentRect = contentElement.getBoundingClientRect();
           const topOffset = contentRect.top + 100;
     
           for (const el of headingElements) {
-              const rect = (el as HTMLElement).getBoundingClientRect();
+              const rect = el.getBoundingClientRect();
               if (rect.top <= topOffset) {
-                  currentActiveId = (el as HTMLElement).getAttribute("data-node-id") || "";
+                  if (useDomHeadings) {
+                      const match = headings.find(h => h.element === el);
+                      currentActiveId = match?.id || "";
+                  } else {
+                      currentActiveId = el.getAttribute("data-node-id") || "";
+                  }
               } else {
                   break;
               }

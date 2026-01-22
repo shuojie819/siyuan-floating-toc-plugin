@@ -1,7 +1,7 @@
 {
   "name": "syplugin-floating-toc",
   "author": "ShuoJie",
-  "url": "https://github.com/example/syplugin-floating-toc",
+  "url": "https://github.com/shuojie819/siyuan-floating-toc",
   "version": "0.1.0",
   "minAppVersion": "2.10.0",
   "script": "index.js",
