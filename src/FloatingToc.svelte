@@ -303,16 +303,36 @@
       return decoder.textContent || decoder.innerText || "";
   };
 
-  export const updateHeadings = async (docId: string, protyle: any) => {
+  export const updateHeadings = async (docId: string, protyle?: any) => {
     if (!docId) return;
-    currentDocId = docId;
-    const response = await fetch("/api/outline/getDocOutline", {
-      method: "POST",
-      body: JSON.stringify({ id: docId }),
-    });
-    const result = await response.json();
-    if (result.code === 0) {
-      headings = flattenHeadings(result.data || []);
+    
+    try {
+      currentDocId = docId;
+      const response = await fetch("/api/outline/getDocOutline", {
+        method: "POST",
+        body: JSON.stringify({ id: docId }),
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API request failed with status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      if (result.code === 0) {
+        // 强制更新大纲数据，无论当前 headings 是否相同
+        headings = [];
+        // 触发响应式更新
+        await new Promise(resolve => setTimeout(resolve, 0));
+        // 设置新的大纲数据
+        headings = flattenHeadings(result.data || []);
+      } else {
+        console.warn(`Failed to get outline: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error("Failed to update headings:", error);
     }
   };
 
@@ -348,48 +368,84 @@
     return flat;
   };
 
-  const handleClick = (heading: any) => {
-    // 修复：光标所在行会导致DOM改变，导致无法定位到正确的标题
-    // 需要先把光标清理了再进行定位
-    if (window.getSelection()) {
-        window.getSelection().removeAllRanges();
-    }
-    if (document.activeElement && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-    }
-
+  // 完全重写的标题跳转逻辑，严格模拟思源原生行为
+  const handleClick = (heading: Heading) => {
+    // 处理文档标题点击
     if (heading.id === currentDocId) {
-         if (targetElement) {
-             const title = targetElement.querySelector(".protyle-title");
-             if (title) {
-                 title.scrollIntoView({ behavior: "smooth", block: "center" });
-                 title.classList.add("protyle-wysiwyg--select");
-                 setTimeout(() => title.classList.remove("protyle-wysiwyg--select"), 2000);
-             } else {
-                 const editor = targetElement.querySelector(".protyle-content");
-                 if (editor) editor.scrollTop = 0;
-             }
-         }
-         return;
-    }
-
-    let target: HTMLElement | null = null;
-    
-    if (targetElement && document.contains(targetElement)) {
-        target = targetElement.querySelector(`[data-node-id="${heading.id}"]`);
-    } 
-    
-    if (target) {
-        if (target.classList.contains("protyle-wysiwyg") || target.classList.contains("protyle-content")) {
-             return; 
+      if (targetElement) {
+        const content = targetElement.querySelector(".protyle-content");
+        if (content) {
+          // 滚动到文档顶部
+          content.scrollTo({ top: 0, behavior: "smooth" });
         }
-
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-        target.classList.add("protyle-wysiwyg--select");
-        setTimeout(() => {
-            target.classList.remove("protyle-wysiwyg--select");
-        }, 2000);
+      }
+      return;
     }
+
+    // 1. 首先移除所有可能的高亮，避免全屏亮
+    document.querySelectorAll('.protyle-wysiwyg--hl').forEach(el => {
+      el.classList.remove('protyle-wysiwyg--hl');
+    });
+
+    // 2. 清除当前选区，避免DOM结构干扰
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      selection.removeAllRanges();
+    }
+
+    // 3. 延迟执行跳转，确保编辑器状态稳定
+    setTimeout(() => {
+      // 4. 查找目标元素，使用更严格的条件
+      const targetElements = document.querySelectorAll(`[data-node-id="${heading.id}"]`);
+      let targetBlock: Element | null = null;
+      
+      for (const element of targetElements) {
+        // 跳过嵌入块、不可见元素
+        if (element.closest('.protyle-embed') || 
+            element.offsetParent === null || 
+            element.offsetWidth === 0 || 
+            element.offsetHeight === 0) {
+          continue;
+        }
+        
+        // 优先选择标题类型元素
+        if (element.getAttribute('data-type') === 'NodeHeading') {
+          targetBlock = element;
+          break;
+        }
+        // 其次选择带有data-node-id的块元素
+        else if (element.hasAttribute('data-node-id')) {
+          targetBlock = element;
+        }
+      }
+      
+      if (targetBlock) {
+        // 5. 确保找到的是具体的标题块
+        const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
+        
+        // 6. 找到protyle-content元素
+        const contentElement = headingBlock.closest('.protyle-content');
+        if (contentElement) {
+          // 7. 滚动到目标位置
+          headingBlock.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+          
+          // 8. 只对目标标题块应用高亮，严格检查元素类型
+          if (headingBlock.hasAttribute('data-node-id')) {
+            // 确保只高亮单个标题块，避免影响父元素
+            const isTitleBlock = headingBlock.getAttribute('data-type') === 'NodeHeading';
+            if (isTitleBlock) {
+              headingBlock.classList.add('protyle-wysiwyg--hl');
+              setTimeout(() => {
+                headingBlock.classList.remove('protyle-wysiwyg--hl');
+              }, 1024);
+            }
+          }
+        }
+      }
+    }, 100);
   };
 
 
@@ -565,181 +621,188 @@
 <style>
   .floating-toc {
     position: fixed;
-    z-index: 10; 
+    z-index: 10;
     display: flex;
     flex-direction: column;
     font-family: var(--b3-font-family);
-    transition: width 0.2s ease, opacity 0.2s ease, left 0.2s ease, right 0.2s ease;
-    gap: 4px; /* Gap between scroll toolbar and panel */
+    transition: width 0.2s ease, opacity 0.2s ease, left 0.2s ease;
+    gap: 4px;
   }
   
   .toc-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: var(--b3-theme-surface);
-      border: 1px solid var(--b3-theme-border);
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-theme-border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s ease;
   }
   
-  /* Update pinned styles */
+  /* 固定状态样式 */
   .floating-toc.pinned .toc-panel {
-      border-radius: 8px;
-      box-shadow: none;
-      border: 1px solid var(--b3-theme-border);
-      background: var(--b3-theme-background);
+    border-radius: 8px;
+    box-shadow: none;
+    border: 1px solid var(--b3-theme-border);
+    background: var(--b3-theme-background);
   }
   
-  /* Scroll Toolbar Styles */
+  /* 滚动工具栏样式 */
   .scroll-toolbar {
-      display: flex;
-      flex-direction: row;
-      justify-content: center;
-      gap: 8px;
-      padding: 2px;
-      flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+    padding: 2px;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
   }
   
   .scroll-btn {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: var(--b3-theme-surface);
-      border: 1px solid var(--b3-theme-border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: var(--b3-theme-on-surface-light);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      transition: all 0.2s;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-theme-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface-light);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+    outline: none;
   }
   
   .scroll-btn:hover {
-      background: var(--b3-theme-surface-light);
-      color: var(--b3-theme-on-surface);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    background: var(--b3-theme-surface-light);
+    color: var(--b3-theme-on-surface);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
   }
   
-  /* Collapsed state adjustments */
+  /* 折叠状态调整 */
   .floating-toc.collapsed .scroll-toolbar {
-      flex-direction: column; /* Stack buttons when collapsed */
-      align-items: center;
-      gap: 4px;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
   }
   
   .floating-toc.collapsed .scroll-btn {
-      width: 20px;
-      height: 20px;
-      padding: 0;
+    width: 20px;
+    height: 20px;
+    padding: 0;
   }
   
   .floating-toc.collapsed .scroll-btn svg {
-      width: 12px;
-      height: 12px;
+    width: 12px;
+    height: 12px;
   }
 
-  /* Collapsed State Panel */
+  /* 折叠状态面板 */
   .floating-toc.collapsed .toc-panel {
-      background: transparent;
-      border: none;
-      box-shadow: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
   
-  /* Collapsed State */
+  /* 折叠状态 */
   .floating-toc.collapsed {
-      width: 32px !important; /* Slightly wider for strips (24 -> 32) */
-      opacity: 0.8;
-      background: transparent;
-      border: none;
-      box-shadow: none;
-      cursor: pointer;
+    width: 32px !important;
+    opacity: 0.8;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
   }
   
   .floating-toc.collapsed:hover {
-      opacity: 1;
+    opacity: 1;
   }
   
+  /* 折叠条样式 */
   .collapsed-strip {
-      flex: 1;
-      width: 100%;
-      overflow-y: auto; /* Allow scrolling in collapsed mode */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 60px 0 8px 0; /* Adjusted top padding (80 -> 60) to account for toolbar */
-      scrollbar-width: none; /* Hide scrollbar */
+    flex: 1;
+    width: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 0 8px 0;
+    scrollbar-width: none;
   }
   
   .collapsed-strip::-webkit-scrollbar {
-      display: none;
+    display: none;
   }
   
   .strip-content {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center; /* Center strips */
-      gap: 14px; /* Further increased gap (10 -> 14) */
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
   }
   
   .strip-item {
-      height: 4px; /* Slightly thicker */
-      background-color: var(--b3-theme-on-surface-light);
-      border-radius: 2px;
-      opacity: 0.5;
-      cursor: pointer;
-      transition: all 0.2s;
-      min-width: 4px;
+    height: 4px;
+    background-color: var(--b3-theme-on-surface-light);
+    border-radius: 2px;
+    opacity: 0.5;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 4px;
   }
   
   .strip-item:hover {
-      opacity: 1;
-      background-color: var(--b3-theme-on-surface);
+    opacity: 1;
+    background-color: var(--b3-theme-on-surface);
   }
   
   .strip-item.active {
-      background-color: var(--b3-theme-primary);
-      opacity: 1;
-      height: 4px;
-      box-shadow: 0 0 4px var(--b3-theme-primary);
+    background-color: var(--b3-theme-primary);
+    opacity: 1;
+    height: 4px;
+    box-shadow: 0 0 4px var(--b3-theme-primary);
+    transition: all 0.3s ease;
   }
 
-  /* Expanded / Pinned State */
+  /* 展开/固定状态 */
   .floating-toc.expanded, .floating-toc.pinned {
-      /* Width handled by inline style */ 
+    /* 宽度由内联样式处理 */
   }
   
+  /* 调整大小手柄 */
   .resize-handle {
-       position: absolute;
-       top: 0;
-       bottom: 0;
-       width: 4px; /* Reduced visual width as requested */
-       cursor: col-resize;
-       z-index: 1000;
-       background: transparent;
-       transition: background 0.2s;
-   }
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    z-index: 1000;
+    background: transparent;
+    transition: background 0.2s ease;
+  }
   
   .resize-handle:hover, .resize-handle:active {
-      background: var(--b3-theme-on-surface-light);
-      opacity: 0.3;
+    background: var(--b3-theme-on-surface-light);
+    opacity: 0.3;
   }
   
   .resize-handle.left { left: 0; }
   .resize-handle.right { right: 0; }
 
+  /* 标题栏样式 */
   .toc-header {
     padding: 8px 12px;
     background: var(--b3-theme-background-light);
     border-bottom: 1px solid var(--b3-theme-border);
     cursor: default;
     display: flex;
-    /* justify-content: space-between; Removed to allow centering or flex-start */
-    justify-content: center; /* Center the toolbar */
+    justify-content: center;
     align-items: center;
     font-weight: bold;
     user-select: none;
@@ -747,52 +810,74 @@
     color: var(--b3-theme-on-surface);
   }
   
-  .floating-toc.pinned .toc-header {
-      cursor: default;
-  }
-  
   .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px; /* Increased gap for better touch targets */
-      width: 100%;
-      justify-content: space-between; /* Spread icons evenly */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
   }
   
   .action-btn {
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      color: var(--b3-theme-on-surface-light);
-      padding: 2px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface-light);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    outline: none;
+    width: 28px;
+    height: 28px;
   }
   
   .action-btn:hover {
-      background: var(--b3-theme-surface-light);
-      color: var(--b3-theme-on-surface);
+    background: var(--b3-theme-surface-light);
+    color: var(--b3-theme-on-surface);
   }
 
+  /* 内容区域 */
   .toc-content {
     overflow-y: auto;
     padding: 8px 0;
     flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--b3-theme-on-surface-light) var(--b3-theme-surface);
   }
 
+  .toc-content::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .toc-content::-webkit-scrollbar-track {
+    background: var(--b3-theme-surface);
+  }
+
+  .toc-content::-webkit-scrollbar-thumb {
+    background: var(--b3-theme-on-surface-light);
+    border-radius: 3px;
+  }
+
+  .toc-content::-webkit-scrollbar-thumb:hover {
+    background: var(--b3-theme-on-surface);
+  }
+
+  /* 标题项样式 */
   .toc-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 12px 6px 0; /* Left padding handled by level class */
+    padding: 6px 12px 6px 0;
     cursor: pointer;
     font-size: 14px;
     color: var(--b3-theme-on-surface);
     line-height: 1.5;
     border-left: 3px solid transparent;
     transition: all 0.2s ease;
+    outline: none;
   }
 
   .toc-item:hover {
@@ -804,8 +889,10 @@
     color: var(--b3-theme-primary);
     border-left-color: var(--b3-theme-primary);
     font-weight: 500;
+    transition: all 0.3s ease;
   }
 
+  /* 标题文本样式 */
   .toc-text {
     flex: 1;
     overflow: hidden;
@@ -814,6 +901,7 @@
     margin-right: 8px;
   }
 
+  /* 标题类型标签 */
   .toc-badge {
     font-size: 10px;
     color: var(--b3-theme-on-surface-light);
@@ -822,12 +910,14 @@
     border-radius: 4px;
     flex-shrink: 0;
     opacity: 0.6;
+    transition: opacity 0.2s ease;
   }
   
   .toc-item:hover .toc-badge {
     opacity: 1;
   }
 
+  /* 标题缩进级别 */
   .level-1 { padding-left: 12px; }
   .level-2 { padding-left: 24px; }
   .level-3 { padding-left: 36px; }
@@ -835,11 +925,33 @@
   .level-5 { padding-left: 60px; }
   .level-6 { padding-left: 72px; }
   
-  /* Add subtle indentation guides */
-  .toc-item {
-    position: relative;
+  /* 无障碍支持 */
+  .toc-item:focus {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: -2px;
+    border-radius: 4px;
   }
-  
-  /* We can add vertical lines with pseudo-elements if needed, 
-     but simple indentation is cleaner for now as per Obsidian style */
+
+  .scroll-btn:focus {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: 1px;
+  }
+
+  .action-btn:focus {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+
+  /* 响应式调整 */
+  @media (max-width: 768px) {
+    .floating-toc {
+      width: 200px !important;
+    }
+    
+    .toc-width {
+      min-width: 150px;
+      max-width: 300px;
+    }
+  }
 </style>
