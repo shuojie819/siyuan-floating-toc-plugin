@@ -349,6 +349,15 @@
   };
 
   const handleClick = (heading: any) => {
+    // 修复：光标所在行会导致DOM改变，导致无法定位到正确的标题
+    // 需要先把光标清理了再进行定位
+    if (window.getSelection()) {
+        window.getSelection().removeAllRanges();
+    }
+    if (document.activeElement && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
     if (heading.id === currentDocId) {
          if (targetElement) {
              const title = targetElement.querySelector(".protyle-title");
