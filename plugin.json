@@ -1,10 +1,9 @@
 {
   "name": "siyuan-floating-toc-plugin",
   "author": "ShuoJie",
-  "url": "https://github.com/shuojie819/siyuan-floating-toc",
-  "version": "0.1.0",
+  "url": "https://github.com/shuojie819/siyuan-floating-toc-plugin",
+  "version": "0.1.1",
   "minAppVersion": "2.10.0",
-  "script": "index.js",
   "description": {
     "default": "Floating Table of Contents for SiYuan Note",
     "zh_CN": "思源笔记悬浮大纲插件"
@@ -14,13 +13,22 @@
     "zh_CN": "悬浮大纲"
   },
   "readme": {
-    "default": "README.md",
-    "zh_CN": "README.md"
+    "default": "README.md"
   },
-  "icon": "icon.png",
-  "backends": [],
-  "i18n": [
-    "zh_CN",
-    "en_US"
+  "backends": [
+    "all"
+  ],
+  "frontends": [
+    "all"
+  ],
+  "disabledInPublish": true,
+  "keywords": [
+    "toc",
+    "outline",
+    "navigation",
+    "floating",
+    "大纲",
+    "目录",
+    "悬浮"
   ]
 }

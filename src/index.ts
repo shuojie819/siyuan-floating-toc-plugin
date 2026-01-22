@@ -15,7 +15,7 @@ export default class FloatingTocPlugin extends Plugin {
     private searchPreviewCheckInterval: number | undefined;
 
     async onload() {
-        console.log("Floating TOC loaded");
+        // console.log("Floating TOC loaded");
         
         // 绑定事件处理函数
         this.switchProtyleHandler = this.onSwitchProtyle.bind(this);
@@ -86,11 +86,11 @@ export default class FloatingTocPlugin extends Plugin {
     private onLoadedProtyle(event: CustomEvent<any>) {
         const protyle = event.detail.protyle;
         if (protyle && protyle.element) {
-            console.log("Floating TOC: onLoadedProtyle - protyle.block.rootID:", protyle.block?.rootID, "protyle.element:", protyle.element);
+            // console.log("Floating TOC: onLoadedProtyle - protyle.block.rootID:", protyle.block?.rootID, "protyle.element:", protyle.element);
             
             // Search preview/document protyle
             const isSearchPreview = protyle.element.closest(".search__preview, .search__doc") !== null;
-            console.log("Floating TOC: onLoadedProtyle - isSearchPreview:", isSearchPreview);
+            // console.log("Floating TOC: onLoadedProtyle - isSearchPreview:", isSearchPreview);
             
             let toc = this.tocInstances.get(protyle.element);
             let resolvedDocId = this.getDocIdFromProtyleElement(protyle.element, protyle);
@@ -103,21 +103,21 @@ export default class FloatingTocPlugin extends Plugin {
             
             if (!toc) {
                 if (resolvedDocId) {
-                    console.log("Floating TOC: onLoadedProtyle - Creating new TOC instance");
+                    // console.log("Floating TOC: onLoadedProtyle - Creating new TOC instance");
                     this.createToc(protyle.element, resolvedDocId);
                     toc = this.tocInstances.get(protyle.element);
                 }
             }
             
             if (toc && resolvedDocId && hadToc && prevDocId !== docKey) {
-                console.log("Floating TOC: onLoadedProtyle - Updating TOC with rootID:", resolvedDocId);
+                // console.log("Floating TOC: onLoadedProtyle - Updating TOC with rootID:", resolvedDocId);
                 this.updateTocForHost(protyle.element, resolvedDocId, protyle, true);
                 
                 if (isSearchPreview) {
                     setTimeout(() => {
                         const finalDocId = this.getDocIdFromProtyleElement(protyle.element, protyle);
                         if (finalDocId) {
-                            console.log("Floating TOC: onLoadedProtyle - Search preview delayed update with rootID:", finalDocId);
+                            // console.log("Floating TOC: onLoadedProtyle - Search preview delayed update with rootID:", finalDocId);
                             this.updateTocForHost(protyle.element, finalDocId, protyle, true);
                         }
                     }, 200);
@@ -166,26 +166,26 @@ export default class FloatingTocPlugin extends Plugin {
      * 处理搜索结果切换事件
      */
     private handleSearchResultChange() {
-        console.log("Floating TOC: handleSearchResultChange called");
+        // console.log("Floating TOC: handleSearchResultChange called");
         
         const searchHosts = this.getSearchPreviewHosts();
         if (searchHosts.length === 0) {
-            console.warn("Floating TOC: No search preview hosts found");
+            // console.warn("Floating TOC: No search preview hosts found");
         }
         searchHosts.forEach((protyleElement) => {
             const rootId = this.getDocIdFromProtyleElement(protyleElement);
             if (!rootId) {
-                console.warn("Floating TOC: Could not get rootId for search result");
+                // console.warn("Floating TOC: Could not get rootId for search result");
                 return;
             }
             
-            console.log("Floating TOC: Updating search TOC with rootId:", rootId);
+            // console.log("Floating TOC: Updating search TOC with rootId:", rootId);
             this.updateTocForHost(protyleElement, rootId, (protyleElement as any).protyle);
             
             setTimeout(() => {
                 const delayedRootId = this.getDocIdFromProtyleElement(protyleElement);
                 if (!delayedRootId) return;
-                console.log("Floating TOC: Delayed TOC update with rootId:", delayedRootId);
+                // console.log("Floating TOC: Delayed TOC update with rootId:", delayedRootId);
                 this.updateTocForHost(protyleElement, delayedRootId, (protyleElement as any).protyle);
             }, 200);
         });
@@ -450,7 +450,7 @@ export default class FloatingTocPlugin extends Plugin {
         const protyles = Array.from(hostSet);
         
         protyles.forEach((p: HTMLElement) => {
-            console.log("Floating TOC: checkProtyles - protyle:", p);
+            // console.log("Floating TOC: checkProtyles - protyle:", p);
             const content = p.querySelector(".protyle-content") || p.querySelector(".protyle-wysiwyg");
             if (!content) return;
             
@@ -461,13 +461,13 @@ export default class FloatingTocPlugin extends Plugin {
             if (!docId) return;
             
             if (!this.tocInstances.has(p)) {
-                console.log("Floating TOC: Creating TOC for protyle:", p, "with docId:", docId);
+                // console.log("Floating TOC: Creating TOC for protyle:", p, "with docId:", docId);
                 this.createToc(p, docId);
             } else {
                 const lastDocId = this.tocDocIds.get(p);
                 const docKey = this.getDocKeyForHost(p, docId);
                 if (docKey !== lastDocId) {
-                    console.log("Floating TOC: Updating TOC for protyle:", p, "with new docId:", docId);
+                    // console.log("Floating TOC: Updating TOC for protyle:", p, "with new docId:", docId);
                     this.updateTocForHost(p, docId, (p as any).protyle);
                 }
             }
@@ -475,7 +475,7 @@ export default class FloatingTocPlugin extends Plugin {
 
         for (const [p, toc] of this.tocInstances.entries()) {
             if (!document.contains(p)) {
-                console.log("Floating TOC: Removing TOC for protyle:", p);
+                // console.log("Floating TOC: Removing TOC for protyle:", p);
                 toc.$destroy();
                 this.tocInstances.delete(p);
                 this.tocDocIds.delete(p);

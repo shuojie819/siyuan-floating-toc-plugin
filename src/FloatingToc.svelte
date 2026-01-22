@@ -623,13 +623,14 @@
     class="floating-toc {isPinned ? 'pinned ' + dockSide : (isExpanded ? 'expanded ' + dockSide : 'collapsed ' + dockSide)}"
     style={pinnedStyle}
     bind:this={container}
-    on:mouseenter={onMouseEnter}
     on:mouseleave={onMouseLeave}
     role="region"
     aria-label="Floating Table of Contents"
   >
       {#if isExpanded}
       <!-- Resize Handle -->
+      <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div 
         class="resize-handle" 
         class:left={dockSide==='right'} 
@@ -698,7 +699,8 @@
       </div>
     {:else}
       <!-- Collapsed State: Mini-map with strips -->
-       <div class="collapsed-strip" class:right={dockSide==='right'}>
+       <!-- svelte-ignore a11y-no-static-element-interactions -->
+       <div class="collapsed-strip" class:right={dockSide==='right'} on:mouseenter={onMouseEnter} role="region" aria-label="Collapsed TOC">
            <div class="strip-content">
                {#each headings as heading}
                    <div 

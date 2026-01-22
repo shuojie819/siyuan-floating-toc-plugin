@@ -16,6 +16,8 @@ export default defineConfig({
         { src: "./preview.png", dest: "./" },
         { src: "./icon.png", dest: "./" },
         { src: "./i18n", dest: "./" },
+        { src: "./LICENSE", dest: "./" },
+        { src: "./CHANGELOG.md", dest: "./" },
       ],
     }),
     zipPack({
