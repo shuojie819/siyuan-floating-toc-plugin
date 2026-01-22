@@ -233,6 +233,25 @@
       }
   };
 
+  let isRefreshing = false;
+  const refreshDoc = () => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      
+      // Trigger F5 key event to refresh the document
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'F5',
+          code: 'F5',
+          keyCode: 116,
+          bubbles: true
+      }));
+
+      // Reset spinning state after a short delay
+      setTimeout(() => {
+          isRefreshing = false;
+      }, 500);
+  };
+
   const collapseAll = () => {
       if (headings.length > 0) {
           // Find the minimum depth in the current headings, prioritizing valid headers (h1-h6)
@@ -650,6 +669,9 @@
           <button class="scroll-btn" on:click={scrollToBottom} title="Scroll to Bottom" aria-label="Scroll to Bottom">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13,4H11V16L5.5,10.5L4.08,12L12,20L19.92,12L18.5,10.5L13,16V4Z" /></svg>
           </button>
+          <button class="scroll-btn" on:click={refreshDoc} title="Refresh Document" aria-label="Refresh Document">
+              <svg viewBox="0 0 24 24" width="16" height="16" class:spinning={isRefreshing}><path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
       </div>
 
       {#if isExpanded}
@@ -1056,5 +1078,15 @@
       min-width: 150px;
       max-width: 300px;
     }
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .spinning {
+    animation: spin 1s linear infinite;
+    transform-origin: center;
   }
 </style>
