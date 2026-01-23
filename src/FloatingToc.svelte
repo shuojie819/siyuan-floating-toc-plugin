@@ -5,6 +5,7 @@
   // This is the DOM element of the protyle instance this TOC belongs to
   export let targetElement: HTMLElement;
   export let dockSide: 'left' | 'right' = 'right';
+  export let followFocus: boolean = true;
 
   type Heading = {
       id: string;
@@ -15,6 +16,7 @@
   };
 
   let headings: Heading[] = [];
+  let focusedIds: Set<string> = new Set();
   let visible = true;
   let currentProtyle: any = null;
 
@@ -234,15 +236,72 @@
 
   const scrollToTop = () => {
       if (targetElement) {
-          const content = targetElement.querySelector(".protyle-content");
-          if (content) content.scrollTop = 0;
+          // 1. 尝试点击原生滚动条的上箭头
+          const scrollUpBtn = targetElement.querySelector('.protyle-scroll__up') as HTMLElement;
+          if (scrollUpBtn && scrollUpBtn.offsetParent !== null) {
+              scrollUpBtn.click();
+              return;
+          }
+
+          // 2. 尝试发送 Ctrl+Home 键盘事件
+          const wysiwyg = targetElement.querySelector('.protyle-wysiwyg');
+          if (wysiwyg) {
+              wysiwyg.dispatchEvent(new KeyboardEvent('keydown', {
+                  key: 'Home',
+                  code: 'Home',
+                  keyCode: 36,
+                  ctrlKey: true,
+                  bubbles: true,
+                  cancelable: true,
+                  composed: true
+              }));
+              // 给一点时间让事件处理
+              setTimeout(() => {
+                  const content = targetElement.querySelector(".protyle-content");
+                  if (content && content.scrollTop > 0) {
+                      content.scrollTop = 0;
+                  }
+              }, 100);
+          } else {
+              const content = targetElement.querySelector(".protyle-content");
+              if (content) content.scrollTop = 0;
+          }
       }
   };
 
   const scrollToBottom = () => {
       if (targetElement) {
+          // 优化：检查文档是否已完全加载 (data-eof="2" 表示已到底部)
           const content = targetElement.querySelector(".protyle-content");
-          if (content) content.scrollTop = content.scrollHeight;
+          if (content && content.getAttribute('data-eof') === '2') {
+              content.scrollTop = content.scrollHeight;
+              return;
+          }
+
+          // 1. 尝试点击原生滚动条的下箭头
+          const scrollDownBtn = targetElement.querySelector('.protyle-scroll__down') as HTMLElement;
+          if (scrollDownBtn && scrollDownBtn.offsetParent !== null) {
+              scrollDownBtn.click();
+              return;
+          }
+
+          // 2. 尝试发送 Ctrl+End 键盘事件
+          const wysiwyg = targetElement.querySelector('.protyle-wysiwyg');
+          if (wysiwyg) {
+              wysiwyg.dispatchEvent(new KeyboardEvent('keydown', {
+                  key: 'End',
+                  code: 'End',
+                  keyCode: 35,
+                  ctrlKey: true,
+                  bubbles: true,
+                  cancelable: true,
+                  composed: true
+              }));
+          } else {
+              // Fallback
+              const content = targetElement.querySelector(".protyle-content");
+              if (content) content.scrollTop = content.scrollHeight;
+          }
       }
   };
 
@@ -511,6 +570,9 @@
       currentDocId = docId;
     }
     
+    // Clear previous focused IDs
+    focusedIds.clear();
+
     try {
       if (isHistoryTarget() && targetElement) {
         const domHeadings = collectHeadingsFromDom(targetElement);
@@ -518,6 +580,55 @@
         await new Promise(resolve => setTimeout(resolve, 0));
         headings = domHeadings;
         return;
+      }
+
+      // Check for Focus Mode (Zoom In) via DOM
+      let isFocusMode = false;
+      if (targetElement) {
+          const exitFocusBtn = targetElement.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]');
+          isFocusMode = !!(exitFocusBtn && !exitFocusBtn.classList.contains("fn__none"));
+      }
+
+      if (isFocusMode && targetElement) {
+          // If Follow Focus is enabled, use the DOM parser to get only focused headings
+          if (followFocus) {
+              // console.log("Floating TOC: Focus Mode detected & Follow Focus is ON. Using DOM parser.");
+              const domHeadings = collectHeadingsFromDom(targetElement);
+              headings = [];
+              await new Promise(resolve => setTimeout(resolve, 0));
+              headings = domHeadings;
+              return;
+          } else {
+              // If Follow Focus is disabled, we want the FULL outline, but highlight focused items.
+              // 1. Get the focused headings from DOM to identify them
+              const domHeadings = collectHeadingsFromDom(targetElement);
+              domHeadings.forEach(h => focusedIds.add(h.id));
+              
+              // 2. We need the Document Root ID to fetch the full outline.
+              // In Focus Mode, docId passed to this function might be the focused block ID.
+              // We need to find the root ID.
+              let rootId = "";
+              if (currentProtyle && currentProtyle.block && currentProtyle.block.rootID) {
+                  rootId = currentProtyle.block.rootID;
+              } else {
+                  // Fallback: try to get it from the first breadcrumb item
+                   const breadcrumb = targetElement.querySelector(".protyle-breadcrumb");
+                   if (breadcrumb) {
+                       const firstItem = breadcrumb.querySelector(".protyle-breadcrumb__item");
+                       if (firstItem) {
+                           rootId = firstItem.getAttribute("data-node-id") || "";
+                       }
+                   }
+              }
+
+              // Use rootId if available, otherwise fallback to docId (which might be focused ID, but worth a try)
+              const fetchId = rootId || docId;
+              
+              // Proceed to fetch full outline below...
+              if (fetchId) {
+                  docId = fetchId;
+              }
+          }
       }
 
       if (!docId) return;
@@ -540,8 +651,22 @@
         headings = [];
         // 触发响应式更新
         await new Promise(resolve => setTimeout(resolve, 0));
+        
+        const apiHeadings = flattenHeadings(result.data || []);
+        
+        // 如果 API 返回空数组，且当前处于聚焦模式 (docId 不是文档 ID)，尝试从 DOM 解析作为 Fallback
+        // 这通常发生在 API 不支持某些聚焦块，或者处于非常规的视图状态时
+        if (apiHeadings.length === 0 && targetElement) {
+             const domHeadings = collectHeadingsFromDom(targetElement);
+             if (domHeadings.length > 0) {
+                 // console.log("Floating TOC: API returned empty, falling back to DOM parser for focus mode");
+                 headings = domHeadings;
+                 return;
+             }
+        }
+        
         // 设置新的大纲数据
-        headings = flattenHeadings(result.data || []);
+        headings = apiHeadings;
       } else {
         console.warn(`Failed to get outline: ${result.message || 'Unknown error'}`);
       }
@@ -818,6 +943,7 @@
                 <div
                     class="toc-item level-{heading.depth}"
                     class:active={heading.id === activeHeadingId}
+                    class:focused-scope={focusedIds.has(heading.id)}
                     data-id={heading.id}
                     on:click|stopPropagation={() => handleClick(heading)}
                     on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
@@ -1152,6 +1278,19 @@
     border-left-color: var(--b3-theme-primary);
     font-weight: 500;
     transition: all 0.3s ease;
+  }
+
+  /* 聚焦模式高亮范围 */
+  .toc-item.focused-scope {
+    background-color: var(--b3-theme-surface-lighter);
+    border-right: 3px solid var(--b3-theme-primary-light);
+  }
+  
+  /* 确保选中状态优先 */
+  .toc-item.active.focused-scope {
+    background: var(--b3-theme-background-light);
+    border-left-color: var(--b3-theme-primary);
+    border-right-color: var(--b3-theme-primary);
   }
 
   /* 标题文本样式 */

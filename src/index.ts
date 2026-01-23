@@ -20,7 +20,10 @@ export default class FloatingTocPlugin extends Plugin {
         // Load config
         await this.loadData("config.json");
         if (!this.data["config.json"]) {
-            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250 };
+            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true };
+        }
+        if (typeof this.data["config.json"].followFocus === "undefined") {
+            this.data["config.json"].followFocus = true;
         }
 
         this.setting = new Setting({
@@ -51,6 +54,36 @@ export default class FloatingTocPlugin extends Plugin {
                     });
                 });
                 return select;
+            },
+        });
+
+        this.setting.addItem({
+            title: this.i18n.followFocus,
+            description: this.i18n.followFocusDesc,
+            createActionElement: () => {
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.className = "b3-switch fn__flex-center";
+                checkbox.checked = this.data["config.json"].followFocus;
+                checkbox.addEventListener("change", () => {
+                    const checked = checkbox.checked;
+                    this.data["config.json"].followFocus = checked;
+                    this.saveData("config.json", this.data["config.json"]);
+                    
+                    // Update all existing instances
+                    this.tocInstances.forEach((toc) => {
+                         toc.$set({ followFocus: checked });
+                         // Force update to refresh headings based on new setting
+                         const protyleElement = (toc as any).targetElement;
+                         if (protyleElement) {
+                             const docId = this.getDocIdFromProtyleElement(protyleElement);
+                             if (docId) {
+                                 toc.updateHeadings(docId, (protyleElement as any).protyle);
+                             }
+                         }
+                    });
+                });
+                return checkbox;
             },
         });
 
@@ -266,6 +299,15 @@ export default class FloatingTocPlugin extends Plugin {
             
             for (const mutation of mutations) {
                 if (mutation.type === 'childList') {
+                    // 1. 检查 Mutation Target 是否为面包屑 (Breadcrumb updates are usually childList changes)
+                    if (mutation.target instanceof HTMLElement) {
+                        if (mutation.target.classList.contains('protyle-breadcrumb') || 
+                            mutation.target.classList.contains('protyle-breadcrumb__bar') ||
+                            mutation.target.closest('.protyle-breadcrumb')) {
+                            shouldCheck = true;
+                        }
+                    }
+
                     // 检查是否有 protyle 相关的节点变化，包括对话框中的
                     for (const node of mutation.addedNodes) {
                         if (node instanceof HTMLElement) {
@@ -322,7 +364,8 @@ export default class FloatingTocPlugin extends Plugin {
                         }
                         // 检查面包屑变化
                         if (mutation.target.classList.contains('protyle-breadcrumb__item') ||
-                            mutation.target.classList.contains('protyle-breadcrumb')) {
+                            mutation.target.classList.contains('protyle-breadcrumb') ||
+                            mutation.target.classList.contains('protyle-breadcrumb__icon')) {
                             searchResultChanged = true;
                             shouldCheck = true;
                         }
@@ -539,6 +582,7 @@ export default class FloatingTocPlugin extends Plugin {
 
         const config = this.data["config.json"] || {};
         const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
+        const followFocus = config.followFocus !== false;
 
         // Create TOC component
         const toc = new FloatingToc({
@@ -546,7 +590,8 @@ export default class FloatingTocPlugin extends Plugin {
             props: {
                 plugin: this,
                 targetElement: protyleElement,
-                dockSide: dockSide
+                dockSide: dockSide,
+                followFocus: followFocus
             }
         });
         if (typeof (toc as any).setVisible === "function") {
@@ -582,20 +627,37 @@ export default class FloatingTocPlugin extends Plugin {
     private onSwitchProtyle(event: CustomEvent<any>) {
         const protyle = event.detail.protyle;
         if (protyle && protyle.element) {
-            let toc = this.tocInstances.get(protyle.element);
-            const docId = this.getDocIdFromProtyleElement(protyle.element, protyle);
+            // 立即尝试更新
+            this.handleSwitchProtyleUpdate(protyle);
             
-            if (!toc) {
-                if (docId) {
-                    this.createToc(protyle.element, docId);
-                    toc = this.tocInstances.get(protyle.element);
-                }
-            }
+            // 延迟重试，确保聚焦模式下的状态已完全同步
+            setTimeout(() => {
+                this.handleSwitchProtyleUpdate(protyle);
+            }, 200);
             
-            if (toc && docId) {
-                toc.updateHeadings(docId, protyle);
-                this.tocDocIds.set(protyle.element, this.getDocKeyForHost(protyle.element, docId));
+            setTimeout(() => {
+                this.handleSwitchProtyleUpdate(protyle);
+            }, 500);
+        }
+    }
+
+    private handleSwitchProtyleUpdate(protyle: any) {
+        if (!protyle || !protyle.element) return;
+        
+        let toc = this.tocInstances.get(protyle.element);
+        const docId = this.getDocIdFromProtyleElement(protyle.element, protyle);
+        
+        if (!toc) {
+            if (docId) {
+                this.createToc(protyle.element, docId);
+                toc = this.tocInstances.get(protyle.element);
             }
+        }
+        
+        if (toc && docId) {
+            // 强制更新，确保聚焦模式切换时能刷新大纲
+            toc.updateHeadings(docId, protyle);
+            this.tocDocIds.set(protyle.element, this.getDocKeyForHost(protyle.element, docId));
         }
     }
 
@@ -767,12 +829,72 @@ export default class FloatingTocPlugin extends Plugin {
 
 
     private getDocIdFromProtyleElement(protyleElement: HTMLElement, protyle?: any): string | null {
+        // console.log("Floating TOC: getDocIdFromProtyleElement called");
+        
+        // 移除 data-loading 检查，避免阻塞 ID 获取
+        // if (protyleElement.getAttribute("data-loading") === "dynamic") {
+        //     return null;
+        // }
+
         const content = protyleElement.querySelector(".protyle-content") as HTMLElement | null;
         const wysiwyg = protyleElement.querySelector(".protyle-wysiwyg") as HTMLElement | null;
         const docRoot = protyleElement.querySelector('[data-type="NodeDocument"]') as HTMLElement | null;
         const titleInput = protyleElement.querySelector(".protyle-title__input") as HTMLElement | null;
         const titleWrapper = protyleElement.querySelector(".protyle-title") as HTMLElement | null;
 
+        // 1. 尝试通过 DOM 检测是否处于聚焦模式 (Focus Mode / Zoom In)
+        // 检查 "退出聚焦" 按钮是否显示
+        const exitFocusBtn = protyleElement.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]');
+        const isFocusModeViaDOM = exitFocusBtn && !exitFocusBtn.classList.contains("fn__none");
+        
+        // if (isFocusModeViaDOM) {
+        //      console.log("Floating TOC: isFocusModeViaDOM detected!");
+        // }
+
+        const protyleObj = protyle || (protyleElement as any).protyle;
+        
+        // 2. 优先检查 protyle 对象的状态
+        if (protyleObj && protyleObj.block) {
+            // console.log("Floating TOC: Protyle block state:", protyleObj.block);
+            
+            // 结合 DOM 检测和 protyle 状态判断聚焦模式
+            // 注意：protyle.block.showAll 在聚焦模式下为 false
+            const isFocusMode = protyleObj.block.showAll === false || isFocusModeViaDOM;
+
+            if (isFocusMode) {
+                // 聚焦模式下，block.id 应该是聚焦块的 ID
+                if (protyleObj.block.id) {
+                    // console.log("Floating TOC: Focus Mode detected. Using block.id:", protyleObj.block.id);
+                    return protyleObj.block.id;
+                }
+            } else {
+                // 普通模式下，使用 rootID
+                if (protyleObj.block.rootID) {
+                    // console.log("Floating TOC: Normal Mode. Using rootID:", protyleObj.block.rootID);
+                    return protyleObj.block.rootID;
+                }
+            }
+        }
+
+        // 3. 如果 protyle 对象不可用或未能返回 ID，尝试从 DOM 获取
+        // 聚焦模式下的特殊处理：尝试从面包屑获取 ID
+        if (isFocusModeViaDOM) {
+            const breadcrumb = protyleElement.querySelector(".protyle-breadcrumb");
+            if (breadcrumb) {
+                const items = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
+                if (items.length > 0) {
+                    // 在聚焦模式下，面包屑的最后一项通常是当前视图的根节点
+                    const lastItem = items[items.length - 1];
+                    const nodeId = lastItem.getAttribute("data-node-id");
+                    if (nodeId) {
+                        // console.log("Floating TOC: Focus Mode fallback. Found ID from breadcrumb:", nodeId);
+                        return nodeId;
+                    }
+                }
+            }
+        }
+
+        // 4. 常规 DOM 获取逻辑 (主要用于非聚焦模式或无法识别模式时)
         let docId =
             content?.getAttribute("data-node-id") ||
             content?.getAttribute("data-root-id") ||
@@ -795,25 +917,12 @@ export default class FloatingTocPlugin extends Plugin {
             protyleElement.getAttribute("data-oid") ||
             "";
 
-        const protyleObj = protyle || (protyleElement as any).protyle;
-        
-        // 优先检查 protyle 对象的状态，以支持聚焦模式 (Zoom In)
-        if (protyleObj && protyleObj.block) {
-            // 如果 showAll 为 false，说明处于聚焦模式，此时 block.id 是当前视图的根 ID
-            if (protyleObj.block.showAll === false) {
-                return protyleObj.block.id;
-            }
-            // 否则返回文档根 ID
-            if (protyleObj.block.rootID) {
-                docId = protyleObj.block.rootID;
-            }
-        }
-
         if (!docId) {
+            // 最后的尝试：遍历面包屑（取第一个，假设是普通模式下的文档根）
             const breadcrumb = protyleElement.querySelector(".protyle-breadcrumb");
             if (breadcrumb) {
-                const breadcrumbItems = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
-                for (const item of breadcrumbItems) {
+                const items = breadcrumb.querySelectorAll(".protyle-breadcrumb__item");
+                for (const item of items) {
                     const nodeId = item.getAttribute("data-node-id");
                     if (nodeId) {
                         docId = nodeId;

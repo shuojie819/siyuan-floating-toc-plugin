@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] - 2026-01-23
+
+### Optimized
+- Optimized "Scroll to Bottom" logic: Prioritizes direct JS scrolling when the document is fully loaded (checked via `data-eof`) for faster response, falling back to native event simulation (`Ctrl+End`) only for lazy-loaded documents.
+
+### Added
+- Added a configuration option "Follow Focus Mode" (default: true).
+  - When enabled, the TOC shows only headings within the focused block.
+  - When disabled, the TOC shows the full document outline, but highlights the focused area with a visual box.
+
+### Fixed
+- Fixed an issue where the TOC would not update when entering or exiting "Focus Mode" (Zoom In) by implementing a robust DOM-based detection mechanism for the breadcrumb bar.
+- Fixed an issue where "Scroll to Bottom" and "Scroll to Top" failed in large documents due to lazy loading.
+
+
 ## [0.1.6] - 2026-01-23
 
 ### Added

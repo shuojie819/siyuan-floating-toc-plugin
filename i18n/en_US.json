@@ -4,5 +4,7 @@
   "dockPosition": "Dock Position",
   "dockPositionDesc": "Set whether the TOC appears on the left or right side",
   "left": "Left",
-  "right": "Right"
+  "right": "Right",
+  "followFocus": "Follow Focus Mode",
+  "followFocusDesc": "If enabled, TOC shows only headings in the focused area; if disabled, TOC shows full outline with focused area highlighted."
 }
