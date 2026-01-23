@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-01-23
+
+### Added
+- Added a configuration option to set the default dock position (Left or Right).
+
+### Changed
+- Changing the dock position within a document is now temporary and does not overwrite the global default configuration.
+
 ## [0.1.3] - 2026-01-23
 
 ### Changed

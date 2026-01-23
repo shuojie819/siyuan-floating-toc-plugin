@@ -1,4 +1,4 @@
-import { Plugin } from "siyuan";
+import { Plugin, Setting } from "siyuan";
 import FloatingToc from "./FloatingToc.svelte";
 
 /**
@@ -17,6 +17,43 @@ export default class FloatingTocPlugin extends Plugin {
     async onload() {
         // console.log("Floating TOC loaded");
         
+        // Load config
+        await this.loadData("config.json");
+        if (!this.data["config.json"]) {
+            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250 };
+        }
+
+        this.setting = new Setting({
+            confirmCallback: () => {
+                this.saveData("config.json", this.data["config.json"]);
+            }
+        });
+
+        this.setting.addItem({
+            title: this.i18n.dockPosition,
+            description: this.i18n.dockPositionDesc,
+            createActionElement: () => {
+                const select = document.createElement("select");
+                select.className = "b3-select fn__flex-center fn__size200";
+                select.innerHTML = `
+                    <option value="right">${this.i18n.right}</option>
+                    <option value="left">${this.i18n.left}</option>
+                `;
+                select.value = this.data["config.json"].dockSide || "right";
+                select.addEventListener("change", () => {
+                    const side = select.value;
+                    this.data["config.json"].dockSide = side;
+                    this.saveData("config.json", this.data["config.json"]);
+                    
+                    // Update all existing instances
+                    this.tocInstances.forEach((toc) => {
+                         toc.$set({ dockSide: side });
+                    });
+                });
+                return select;
+            },
+        });
+
         // 绑定事件处理函数
         this.switchProtyleHandler = this.onSwitchProtyle.bind(this);
         
@@ -496,12 +533,16 @@ export default class FloatingTocPlugin extends Plugin {
         container.className = "siyuan-floating-toc-plugin-container";
         protyleElement.appendChild(container);
 
+        const config = this.data["config.json"] || {};
+        const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
+
         // Create TOC component
         const toc = new FloatingToc({
             target: container,
             props: {
                 plugin: this,
-                targetElement: protyleElement
+                targetElement: protyleElement,
+                dockSide: dockSide
             }
         });
         if (typeof (toc as any).setVisible === "function") {

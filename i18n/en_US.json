@@ -1,4 +1,8 @@
 {
   "displayName": "Floating TOC",
-  "toggle": "Toggle Floating TOC"
+  "toggle": "Toggle Floating TOC",
+  "dockPosition": "Dock Position",
+  "dockPositionDesc": "Set whether the TOC appears on the left or right side",
+  "left": "Left",
+  "right": "Right"
 }

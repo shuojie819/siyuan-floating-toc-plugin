@@ -4,6 +4,7 @@
   export let plugin: any;
   // This is the DOM element of the protyle instance this TOC belongs to
   export let targetElement: HTMLElement;
+  export let dockSide: 'left' | 'right' = 'right';
 
   type Heading = {
       id: string;
@@ -33,7 +34,7 @@
 
   // Docking state
   let isPinned = false;
-  let dockSide: 'left' | 'right' = 'right';
+  // let dockSide is now a prop
   let isHovering = false;
   let pinnedStyle = "";
   let resizeObserver: ResizeObserver | null = null;
@@ -177,11 +178,18 @@
   };
 
   // Watch for changes
-  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth) {
-      updatePosition();
+  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth || visible) {
+      if (visible) {
+          updatePosition();
+      } else {
+          // If hidden, force remove padding if it was applied
+          if (targetElement) {
+              updateEditorPadding(targetElement, 0);
+          }
+      }
       
       if (resizeObserver) resizeObserver.disconnect();
-      if (targetElement) {
+      if (targetElement && visible) {
           resizeObserver = new ResizeObserver(() => {
               updatePosition();
           });
@@ -241,19 +249,78 @@
   const refreshDoc = () => {
       if (isRefreshing) return;
       isRefreshing = true;
-      
-      // Trigger F5 key event to refresh the document
-      document.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'F5',
-          code: 'F5',
-          keyCode: 116,
-          bubbles: true
-      }));
 
-      // Reset spinning state after a short delay
-      setTimeout(() => {
-          isRefreshing = false;
-      }, 500);
+      const triggerF5 = () => {
+          // Trigger F5 key event to refresh the document
+          document.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'F5',
+              code: 'F5',
+              keyCode: 116,
+              bubbles: true
+          }));
+      };
+
+      // 1. 尝试找到当前文档对应的菜单按钮
+      let menuBtn: HTMLElement | null = null;
+      
+      // 通常在 layout__center 下的 header 中
+      const center = targetElement?.closest('.layout__center');
+      if (center) {
+          const header = center.querySelector('.layout__center-header');
+          if (header) {
+              menuBtn = header.querySelector('[data-type="more"]');
+          }
+      }
+      
+      // 如果是在弹出窗口或浮动窗口中
+      if (!menuBtn) {
+           const wnd = targetElement?.closest('.b3-dialog__container') || targetElement?.closest('.layout__wnd');
+           // ... (窗口查找逻辑可能比较复杂，暂时依赖 F5 回退)
+      }
+
+      if (menuBtn) {
+          // 2. 点击打开菜单
+          menuBtn.click();
+          
+          // 3. 等待菜单出现并查找刷新项
+          setTimeout(() => {
+              const menu = document.getElementById('commonMenu');
+              let foundAndClicked = false;
+
+              if (menu) {
+                  const items = menu.querySelectorAll('.b3-menu__item');
+                  let refreshBtn: HTMLElement | null = null;
+                  
+                  for (let i = 0; i < items.length; i++) {
+                      const item = items[i] as HTMLElement;
+                      const label = item.querySelector('.b3-menu__label')?.textContent?.trim();
+                      if (label === "刷新" || label === "Refresh") {
+                          refreshBtn = item;
+                          break;
+                      }
+                  }
+                  
+                  if (refreshBtn) {
+                      refreshBtn.click();
+                      foundAndClicked = true;
+                  } else {
+                      // 未找到刷新按钮，关闭菜单
+                      menuBtn?.click();
+                  }
+              }
+              
+              if (!foundAndClicked) {
+                  // 如果未找到菜单或刷新按钮，执行 F5 回退
+                  triggerF5();
+              }
+
+              setTimeout(() => { isRefreshing = false; }, 500);
+          }, 0);
+      } else {
+          // 如果找不到按钮，回退到 F5 模拟
+          triggerF5();
+          setTimeout(() => { isRefreshing = false; }, 500);
+      }
   };
 
   const collapseAll = () => {
@@ -274,7 +341,11 @@
   };
 
   const saveData = () => {
-      plugin.saveData("config.json", { isPinned, dockSide, tocWidth });
+      // 获取当前的全局配置中的默认位置，而不是使用当前的临时位置
+      const currentConfig = plugin.data["config.json"] || {};
+      const defaultDockSide = currentConfig.dockSide || 'right';
+      
+      plugin.saveData("config.json", { isPinned, dockSide: defaultDockSide, tocWidth });
   };
 
   const togglePin = () => {
@@ -284,7 +355,8 @@
 
   const toggleDockSide = () => {
       dockSide = dockSide === 'right' ? 'left' : 'right';
-      saveData();
+      // 不保存到全局配置，使其仅对当前会话有效
+      // saveData(); 
   };
   
   // Handlers for hover expansion

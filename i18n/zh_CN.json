@@ -1,4 +1,8 @@
 {
   "displayName": "悬浮大纲",
-  "toggle": "切换悬浮大纲"
+  "toggle": "切换悬浮大纲",
+  "dockPosition": "大纲位置",
+  "dockPositionDesc": "设置大纲默认显示在左侧还是右侧",
+  "left": "左侧",
+  "right": "右侧"
 }
