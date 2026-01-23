@@ -550,7 +550,9 @@ export default class FloatingTocPlugin extends Plugin {
         }
 
         // Initialize data
-        toc.updateHeadings(docId, { element: protyleElement });
+        // 尝试获取挂载在 DOM 元素上的 protyle 对象，以便后续可以使用原生 API (如 reload)
+        const protyleObj = (protyleElement as any).protyle || { element: protyleElement };
+        toc.updateHeadings(docId, protyleObj);
         this.tocDocIds.set(protyleElement, this.getDocKeyForHost(protyleElement, docId));
         
         this.tocInstances.set(protyleElement, toc);
@@ -790,8 +792,17 @@ export default class FloatingTocPlugin extends Plugin {
             "";
 
         const protyleObj = protyle || (protyleElement as any).protyle;
-        if (!docId && protyleObj && protyleObj.block && protyleObj.block.rootID) {
-            docId = protyleObj.block.rootID;
+        
+        // 优先检查 protyle 对象的状态，以支持聚焦模式 (Zoom In)
+        if (protyleObj && protyleObj.block) {
+            // 如果 showAll 为 false，说明处于聚焦模式，此时 block.id 是当前视图的根 ID
+            if (protyleObj.block.showAll === false) {
+                return protyleObj.block.id;
+            }
+            // 否则返回文档根 ID
+            if (protyleObj.block.rootID) {
+                docId = protyleObj.block.rootID;
+            }
         }
 
         if (!docId) {
@@ -848,8 +859,13 @@ export default class FloatingTocPlugin extends Plugin {
                  const docId = this.getDocIdFromProtyleElement(hostElement);
                  if (!docId) return;
 
+                 // 获取当前 protyle 的真实文档 rootID (用于事件过滤)
+                 const protyleObj = (hostElement as any).protyle;
+                 const fileRootId = protyleObj?.block?.rootID || docId;
+
                  // 检查 rootID 是否匹配（如果消息中有）
-                 if (data.data && data.data.rootID && data.data.rootID !== docId) {
+                 // 注意：在聚焦模式下，docId 是聚焦块 ID，而 fileRootId 是文档 ID。WS 消息通常携带文档 ID。
+                 if (data.data && data.data.rootID && data.data.rootID !== fileRootId) {
                      return;
                  }
 

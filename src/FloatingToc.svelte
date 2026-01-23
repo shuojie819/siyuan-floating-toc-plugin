@@ -16,6 +16,7 @@
 
   let headings: Heading[] = [];
   let visible = true;
+  let currentProtyle: any = null;
 
   export const toggle = () => {
       visible = !visible;
@@ -198,7 +199,7 @@
   }
 
   onMount(async () => {
-      const savedData = await plugin.loadData("config.json");
+      const savedData = plugin.data["config.json"];
       if (savedData) {
           isPinned = savedData.isPinned ?? false;
           dockSide = savedData.dockSide ?? 'right';
@@ -249,6 +250,31 @@
   const refreshDoc = () => {
       if (isRefreshing) return;
       isRefreshing = true;
+
+      // 尝试使用原生 API 刷新
+      if (currentProtyle) {
+          try {
+              // IProtyle 接口通常有一个 getInstance 方法返回 Protyle 类实例
+              if (typeof currentProtyle.getInstance === 'function') {
+                  const instance = currentProtyle.getInstance();
+                  if (instance && typeof instance.reload === 'function') {
+                      // console.log("Floating TOC: Reloading using native API (Protyle.reload)");
+                      instance.reload(false);
+                      setTimeout(() => { isRefreshing = false; }, 500);
+                      return;
+                  }
+              } 
+              // 也许直接就是 Protyle 实例？
+              else if (typeof currentProtyle.reload === 'function') {
+                   // console.log("Floating TOC: Reloading using native API (Direct reload)");
+                   currentProtyle.reload(false);
+                   setTimeout(() => { isRefreshing = false; }, 500);
+                   return;
+              }
+          } catch (e) {
+              console.error("Floating TOC: Failed to reload using native API", e);
+          }
+      }
 
       const triggerF5 = () => {
           // Trigger F5 key event to refresh the document
@@ -345,7 +371,9 @@
       const currentConfig = plugin.data["config.json"] || {};
       const defaultDockSide = currentConfig.dockSide || 'right';
       
-      plugin.saveData("config.json", { isPinned, dockSide: defaultDockSide, tocWidth });
+      const newData = { isPinned, dockSide: defaultDockSide, tocWidth };
+      plugin.data["config.json"] = newData;
+      plugin.saveData("config.json", newData);
   };
 
   const togglePin = () => {
@@ -476,6 +504,9 @@
   };
 
   export const updateHeadings = async (docId: string, protyle?: any) => {
+    if (protyle) {
+        currentProtyle = protyle;
+    }
     if (docId) {
       currentDocId = docId;
     }
@@ -632,6 +663,11 @@
             }
           }
         }
+      } else {
+        // 9. 如果在当前 DOM 中找不到目标块（可能在聚焦模式外），尝试使用协议跳转
+        // 这会让思源处理上下文切换（例如退出聚焦模式）
+        // console.log("Floating TOC: Target not found in DOM, using protocol navigation:", heading.id);
+        window.open(`siyuan://blocks/${heading.id}`, "_blank");
       }
     }, 100);
   };

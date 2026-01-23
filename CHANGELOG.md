@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-01-23
+
+### Added
+- Added support for "Focus Mode" (Zoom In). The TOC now correctly displays only the headings within the focused block.
+- Implemented smart navigation fallback: clicking a heading outside the current view (in Focus Mode) automatically exits Focus Mode and jumps to the target block using the `siyuan://` protocol.
+
+### Optimized
+- Optimized plugin startup performance by removing redundant configuration file reads.
+- Refactored document refresh logic to use native SiYuan API (`Protyle.reload`) for better stability, with a fallback to the previous method.
+
 ## [0.1.4] - 2026-01-23
 
 ### Added
