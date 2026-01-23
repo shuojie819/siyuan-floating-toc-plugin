@@ -124,6 +124,10 @@ export default class FloatingTocPlugin extends Plugin {
         this.tocDocIds.clear();
     }
 
+    uninstall() {
+        this.removeData("config.json");
+    }
+
     private onLoadedProtyle(event: CustomEvent<any>) {
         const protyle = event.detail.protyle;
         if (protyle && protyle.element) {

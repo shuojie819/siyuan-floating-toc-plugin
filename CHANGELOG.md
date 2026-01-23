@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2026-01-23
+
+### Added
+- Added `uninstall` method to automatically clean up configuration files (`config.json`) when the plugin is uninstalled.
+
 ## [0.1.5] - 2026-01-23
 
 ### Added
