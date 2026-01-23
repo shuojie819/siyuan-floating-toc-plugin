@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed an issue where the TOC would not update when entering or exiting "Focus Mode" (Zoom In) by implementing a robust DOM-based detection mechanism for the breadcrumb bar.
 - Fixed an issue where "Scroll to Bottom" and "Scroll to Top" failed in large documents due to lazy loading.
+- Fixed an issue where the TOC covered the block marker area (gutter) when docked to the left, preventing interaction with block menus. Added an intelligent safety margin (approx. 42px) to ensure block markers remain accessible in both collapsed and pinned modes.
 
 
 ## [0.1.6] - 2026-01-23

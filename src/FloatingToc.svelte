@@ -84,7 +84,9 @@
                
                left = Math.max(minLeft, idealLeft);
                
-               if (left + tocWidth > naturalTextLeft) {
+               // Check overlap with text OR marker area (approx 42px buffer)
+               // Also, if pinned, we prefer to ensure safety margin
+               if (isPinned || (left + tocWidth > naturalTextLeft - 42)) {
                    paddingNeeded = true;
                } else {
                    paddingNeeded = false;
@@ -107,22 +109,24 @@
        } else {
            if (dockSide === 'left') {
                left = rect.left + resizeHandleOffset;
+               // Left dock always needs padding to avoid covering block markers
+               paddingNeeded = true;
            } else {
                left = rect.right - (isExpanded ? tocWidth : 32) - resizeHandleOffset;
+               paddingNeeded = false;
            }
-           paddingNeeded = false;
        }
       
       const widthStyle = isExpanded ? `width: ${tocWidth}px;` : '';
       
-      // Animation optimization: use transform for smoother movement if possible, but here we update left/top.
-      // To fix the "right side animation" issue, we need to ensure the transition handles the 'left' property change smoothly.
-      // When expanding on the right, 'left' changes from (right_edge - 32) to (right_edge - 250).
-      
       pinnedStyle = `top: ${top}px; left: ${left}px; height: ${height}px; ${widthStyle}`;
       
        if (isPinned && paddingNeeded) {
-           updateEditorPadding(targetElement, tocWidth);
+           const extra = (dockSide === 'left') ? 42 : 0;
+           updateEditorPadding(targetElement, tocWidth + extra);
+       } else if (dockSide === 'left' && !isExpanded) {
+           // For collapsed left dock, always apply minimal padding to clear markers
+           updateEditorPadding(targetElement, 42); // 32px (width) + 10px (gap)
        } else {
            updateEditorPadding(targetElement, 0);
        }
