@@ -38,6 +38,9 @@ export default class FloatingTocPlugin extends Plugin {
         // 监听文档内容更新事件
         this.eventBus.on("update-block", this.handleBlockUpdate.bind(this));
         
+        // 监听 WebSocket 消息，用于更准确的文档更新通知 (参考思源 Outline.ts 实现)
+        this.eventBus.on("ws-main", this.handleWsMain.bind(this));
+        
         // 监听 protyle 加载完成事件（用于搜索预览和文档切换）
         this.eventBus.on("loaded-protyle", this.onLoadedProtyle.bind(this));
         
@@ -61,6 +64,7 @@ export default class FloatingTocPlugin extends Plugin {
         // 清理事件监听
         this.eventBus.off("switch-protyle", this.switchProtyleHandler);
         this.eventBus.off("update-block", this.handleBlockUpdate.bind(this));
+        this.eventBus.off("ws-main", this.handleWsMain.bind(this));
         this.eventBus.off("loaded-protyle", this.onLoadedProtyle.bind(this));
         
         // 清理防抖定时器
@@ -789,24 +793,148 @@ export default class FloatingTocPlugin extends Plugin {
     }
 
     /**
+     * 处理 WebSocket 消息
+     * 参考思源笔记官方实现：siyuan/app/src/layout/dock/Outline.ts -> msgCallback / onTransaction
+     */
+    private handleWsMain(event: CustomEvent<any>) {
+        const data = event.detail;
+        if (!data) return;
+
+        // 处理 savedoc 命令 (文档保存/更新)
+        if (data.cmd === "savedoc" || data.cmd === "transactions") {
+             // 遍历所有 TOC 实例，检查是否需要更新
+             this.tocInstances.forEach((toc, hostElement) => {
+                 const docId = this.getDocIdFromProtyleElement(hostElement);
+                 if (!docId) return;
+
+                 // 检查 rootID 是否匹配（如果消息中有）
+                 if (data.data && data.data.rootID && data.data.rootID !== docId) {
+                     return;
+                 }
+
+                 // 检查操作内容是否涉及标题更新
+                 let needReload = false;
+                 
+                 const sources = data.data?.sources || [];
+                 if (sources.length > 0) {
+                     const ops = sources[0];
+                     
+                     // 检查 doOperations
+                     if (ops && ops.doOperations) {
+                         ops.doOperations.forEach((item: any) => {
+                            if (needReload) return;
+                            
+                            const action = item.action;
+                            const itemData = item.data || "";
+                            
+                            // 1. 检查数据中是否明确包含 NodeHeading
+                            const isHeadingData = typeof itemData === 'string' && itemData.indexOf('data-type="NodeHeading"') > -1;
+                            
+                            if (action === "insert" && isHeadingData) {
+                                needReload = true;
+                            } else if (action === "update") {
+                                if (isHeadingData) {
+                                    needReload = true;
+                                } else {
+                                    // 2. 检查被更新的块是否是标题（通过 DOM 查找）
+                                    const block = hostElement.querySelector(`[data-node-id="${item.id}"]`);
+                                    if (block && block.getAttribute("data-type") === "NodeHeading") {
+                                        needReload = true;
+                                    }
+                                }
+                            } else if (action === "delete" || action === "move") {
+                                // 3. 删除或移动
+                                // 首先检查该 ID 是否存在于当前的大纲列表中 (对于删除操作，元素可能已从 DOM 移除，但仍在 TOC 中)
+                                if (typeof (toc as any).hasHeading === 'function' && (toc as any).hasHeading(item.id)) {
+                                    needReload = true;
+                                } else {
+                                    // 如果不在 TOC 中，尝试检查 DOM（可能是新添加后立即移动/删除，或者是一个移动操作）
+                                    const block = hostElement.querySelector(`[data-node-id="${item.id}"]`);
+                                    if (block && block.getAttribute("data-type") === "NodeHeading") {
+                                        needReload = true;
+                                    }
+                                }
+                            }
+                         });
+                     }
+                     
+                     // 检查 undoOperations (思源逻辑中也检查了这个)
+                     if (!needReload && ops.undoOperations) {
+                        ops.undoOperations.forEach((item: any) => {
+                            if (needReload) return;
+                            const itemData = item.data || "";
+                             if (item.action === "update" && typeof itemData === 'string' && itemData.indexOf('data-type="NodeHeading"') > -1) {
+                                needReload = true;
+                            }
+                        });
+                     }
+                 }
+
+                 if (needReload) {
+                     toc.updateHeadings(docId, { element: hostElement });
+                     this.tocDocIds.set(hostElement, this.getDocKeyForHost(hostElement, docId));
+                 }
+             });
+        }
+    }
+
+    /**
      * 处理块更新事件
      */
     private handleBlockUpdate(event: CustomEvent<any>) {
         const data = event.detail;
+        
+        // 检查是否是文档内容更新
+        // 如果 data 中包含 id，说明是特定的块更新
+        // 如果不包含 id，或者是整个文档的更新，我们需要更广泛地刷新
+        
+        // 遍历所有活跃的 TOC 实例，检查它们是否需要更新
+        this.tocInstances.forEach((toc, hostElement) => {
+            const docId = this.getDocIdFromProtyleElement(hostElement);
+            if (!docId) return;
+
+            // 如果更新事件包含 id，检查该 id 是否属于当前文档
+            // 注意：这里只是简单的检查，实际上可能需要更复杂的逻辑判断块是否属于文档
+            // 为了简化，我们假设只要有块更新，且该块在当前文档中（通过 DOM 查找），或者无法确定，我们都尝试刷新
+            let shouldUpdate = false;
+            
+            if (data && data.id) {
+                 // 尝试查找块是否存在于当前 protyle 中
+                 const blockInHost = hostElement.querySelector(`[data-node-id="${data.id}"]`);
+                 if (blockInHost) {
+                     shouldUpdate = true;
+                 } else {
+                     // 如果块不在当前 host 中，但 docId 匹配（例如多窗口场景），也应该更新
+                     // 但我们无法直接从 data.id 获取 docId，除非查询。
+                     // 作为一个通用的回退，如果这是一个标题块的更新，我们可能需要更新
+                     // 由于无法轻易知道 data.id 是否是标题，我们可以稍微放宽条件，或者依赖后续的逻辑
+                 }
+            } else {
+                // 如果没有特定 id，可能是通用更新，建议刷新
+                shouldUpdate = true;
+            }
+
+            // 另外，如果用户刚刚添加了新标题（例如在空文档中），可能没有触发特定块的更新事件
+            // 或者事件形式不同。
+            // 为了修复“在文档里创建新的标题块之后，不会更新大纲”的问题，
+            // 我们可以利用 MutationObserver 已经监控到的变化，但 sometimes update-block is cleaner.
+            
+            // 实际上，创建新标题块通常会触发 update-block 事件
+            
+            if (shouldUpdate) {
+                toc.updateHeadings(docId, { element: hostElement });
+                this.tocDocIds.set(hostElement, this.getDocKeyForHost(hostElement, docId));
+            }
+        });
+        
+        // 原有的逻辑保留作为补充
         if (data && data.id) {
             // Find the protyle that contains this block.
             const blockElement = document.querySelector(`[data-node-id="${data.id}"]`);
             if (blockElement) {
                 const protyleElement = blockElement.closest(".protyle") as HTMLElement;
                 if (protyleElement && this.tocInstances.has(protyleElement)) {
-                    const toc = this.tocInstances.get(protyleElement);
-                    if (toc) {
-                        const docId = this.getDocIdFromProtyleElement(protyleElement);
-                        if (docId) {
-                            toc.updateHeadings(docId, { element: protyleElement });
-                            this.tocDocIds.set(protyleElement, this.getDocKeyForHost(protyleElement, docId));
-                        }
-                    }
+                    // 已经在上面的循环中处理过了，这里可以忽略，或者作为双重保险
                 }
             }
         }

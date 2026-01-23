@@ -24,6 +24,10 @@
       visible = value;
   };
 
+  export const hasHeading = (id: string) => {
+      return headings.some(h => h.id === id);
+  };
+
   let currentDocId = "";
   let container: HTMLElement;
 
@@ -637,7 +641,7 @@
   });
 </script>
 
-{#if visible && headings.length > 0}
+{#if visible}
   <div
     class="floating-toc {isPinned ? 'pinned ' + dockSide : (isExpanded ? 'expanded ' + dockSide : 'collapsed ' + dockSide)}"
     style={pinnedStyle}
@@ -698,25 +702,29 @@
             </div>
         </div>
         <div class="toc-content">
-            {#each headings as heading}
-            {#if heading.depth <= maxDepth}
-            <div
-                class="toc-item level-{heading.depth}"
-                class:active={heading.id === activeHeadingId}
-                data-id={heading.id}
-                on:click|stopPropagation={() => handleClick(heading)}
-                on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
-                title={heading.content}
-                role="button"
-                tabindex="0"
-            >
-                <div class="toc-text">{heading.content}</div>
-                {#if heading.subType}
-                <div class="toc-badge">{heading.subType.toUpperCase()}</div>
+            {#if headings.length === 0}
+                <div class="toc-empty">No headings</div>
+            {:else}
+                {#each headings as heading}
+                {#if heading.depth <= maxDepth}
+                <div
+                    class="toc-item level-{heading.depth}"
+                    class:active={heading.id === activeHeadingId}
+                    data-id={heading.id}
+                    on:click|stopPropagation={() => handleClick(heading)}
+                    on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
+                    title={heading.content}
+                    role="button"
+                    tabindex="0"
+                >
+                    <div class="toc-text">{heading.content}</div>
+                    {#if heading.subType}
+                    <div class="toc-badge">{heading.subType.toUpperCase()}</div>
+                    {/if}
+                </div>
                 {/if}
-            </div>
+                {/each}
             {/if}
-            {/each}
         </div>
       </div>
     {:else}
@@ -724,19 +732,24 @@
        <!-- svelte-ignore a11y-no-static-element-interactions -->
        <div class="collapsed-strip" class:right={dockSide==='right'} on:mouseenter={onMouseEnter} role="region" aria-label="Collapsed TOC">
            <div class="strip-content">
-               {#each headings as heading}
-                   <div 
-                       class="strip-item"
-                       class:active={heading.id === activeHeadingId}
-                       data-id={heading.id}
-                       style="width: {100 - (heading.depth - 1) * 10}%;"
-                       on:click|stopPropagation={() => handleClick(heading)}
-                       on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
-                       title={heading.content}
-                       role="button"
-                       tabindex="0"
-                   ></div>
-               {/each}
+               {#if headings.length === 0}
+                   <!-- Show a placeholder dot if no headings -->
+                   <div class="strip-placeholder"></div>
+               {:else}
+                   {#each headings as heading}
+                       <div 
+                           class="strip-item"
+                           class:active={heading.id === activeHeadingId}
+                           data-id={heading.id}
+                           style="width: {100 - (heading.depth - 1) * 10}%;"
+                           on:click|stopPropagation={() => handleClick(heading)}
+                           on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
+                           title={heading.content}
+                           role="button"
+                           tabindex="0"
+                       ></div>
+                   {/each}
+               {/if}
            </div>
        </div>
     {/if}
@@ -988,6 +1001,22 @@
 
   .toc-content::-webkit-scrollbar-thumb:hover {
     background: var(--b3-theme-on-surface);
+  }
+
+  .toc-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .strip-placeholder {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: var(--b3-theme-on-surface-light);
+    opacity: 0.5;
   }
 
   /* 标题项样式 */

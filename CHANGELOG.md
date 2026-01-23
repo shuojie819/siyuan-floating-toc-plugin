@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-01-23
+
+### Changed
+- Floating TOC is now always visible, even for documents with no headings.
+- Excluded LICENSE and CHANGELOG.md from the distribution package.
+
+### Fixed
+- Fixed an issue where the TOC would not update when creating, moving, or deleting headings (implemented real-time WebSocket synchronization).
+
+## [0.1.2] - 2026-01-23
+
+### Added
+- Added "Refresh Document" button to the bottom toolbar (triggers F5).
+
 ## [0.1.1] - 2026-01-23
 
 ### Changed
