@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Optimized
 - Optimized the visual display of the Mini TOC: strip length now varies dynamically based on heading level (stepped effect), and alignment automatically follows the dock side (left-aligned when docked left, right-aligned when docked right).
+- Reduced the indentation level of headings in the TOC (from 12px/level to 8px/level) to make the layout more compact and avoid excessive indentation for deep levels (e.g., H6).
 
 ### Fixed
 - Fixed an issue where a blank space appeared on the right side of the TOC on mobile devices (width <= 768px) due to inconsistency between calculation and rendering width.

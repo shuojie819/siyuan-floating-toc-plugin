@@ -1355,12 +1355,12 @@
   }
 
   /* 标题缩进级别 */
-  .level-1 { padding-left: 12px; }
-  .level-2 { padding-left: 24px; }
-  .level-3 { padding-left: 36px; }
-  .level-4 { padding-left: 48px; }
-  .level-5 { padding-left: 60px; }
-  .level-6 { padding-left: 72px; }
+  .level-1 { padding-left: 8px; }
+  .level-2 { padding-left: 16px; }
+  .level-3 { padding-left: 24px; }
+  .level-4 { padding-left: 32px; }
+  .level-5 { padding-left: 40px; }
+  .level-6 { padding-left: 48px; }
   
   /* 无障碍支持 */
   .toc-item:focus {
