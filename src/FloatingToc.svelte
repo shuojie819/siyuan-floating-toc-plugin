@@ -61,14 +61,19 @@
       const wysiwyg = targetElement.querySelector('.protyle-wysiwyg');
       const rect = content.getBoundingClientRect();
 
-      // Add vertical spacing
-      const verticalMargin = 30;
-      let top = rect.top + verticalMargin;
-      let height = rect.height - (verticalMargin * 2);
+      const top = Math.max(rect.top, 80); // Ensure minimal top margin
+      const height = Math.min(rect.height, window.innerHeight - top - 20); // Adjust height
       let left = 0;
       
       const resizeHandleOffset = 6; 
       let paddingNeeded = false;
+
+      // Mobile adaptation: Force 200px width on small screens to match previous CSS logic
+      // and ensure calculations are consistent with rendering.
+      let effectiveTocWidth = tocWidth;
+      if (window.innerWidth <= 768) {
+          effectiveTocWidth = 200;
+      }
 
       if (isExpanded && wysiwyg) {
            const wRect = wysiwyg.getBoundingClientRect();
@@ -79,14 +84,14 @@
            
            if (dockSide === 'left') {
                const naturalTextLeft = wRect.left - (currentPaddingLeft / 2);
-               const idealLeft = naturalTextLeft - tocWidth - gap;
+               const idealLeft = naturalTextLeft - effectiveTocWidth - gap;
                const minLeft = rect.left + resizeHandleOffset;
                
                left = Math.max(minLeft, idealLeft);
                
                // Check overlap with text OR marker area (approx 42px buffer)
                // Also, if pinned, we prefer to ensure safety margin
-               if (isPinned || (left + tocWidth > naturalTextLeft - 42)) {
+               if (isPinned || (left + effectiveTocWidth > naturalTextLeft - 42)) {
                    paddingNeeded = true;
                } else {
                    paddingNeeded = false;
@@ -95,7 +100,7 @@
            } else {
                const naturalTextRight = wRect.right + (currentPaddingRight / 2);
                const idealLeft = naturalTextRight + gap;
-               const maxLeft = rect.right - tocWidth - resizeHandleOffset;
+               const maxLeft = rect.right - effectiveTocWidth - resizeHandleOffset;
                
                left = Math.min(maxLeft, idealLeft);
                
@@ -112,20 +117,21 @@
                // Left dock always needs padding to avoid covering block markers
                paddingNeeded = true;
            } else {
-               left = rect.right - (isExpanded ? tocWidth : 32) - resizeHandleOffset;
+               left = rect.right - (isExpanded ? effectiveTocWidth : 32) - resizeHandleOffset;
                paddingNeeded = false;
            }
        }
       
-      const widthStyle = isExpanded ? `width: ${tocWidth}px;` : '';
+      const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : '';
       
       pinnedStyle = `top: ${top}px; left: ${left}px; height: ${height}px; ${widthStyle}`;
       
        if (isPinned && paddingNeeded) {
            const extra = (dockSide === 'left') ? 42 : 0;
-           updateEditorPadding(targetElement, tocWidth + extra);
-       } else if (dockSide === 'left' && !isExpanded) {
-           // For collapsed left dock, always apply minimal padding to clear markers
+           updateEditorPadding(targetElement, effectiveTocWidth + extra);
+       } else if (dockSide === 'left') {
+           // For left dock (both collapsed AND expanded), always apply minimal padding 
+           // to maintain consistent layout and keep block markers accessible.
            updateEditorPadding(targetElement, 42); // 32px (width) + 10px (gap)
        } else {
            updateEditorPadding(targetElement, 0);
@@ -1351,7 +1357,7 @@
   /* 响应式调整 */
   @media (max-width: 768px) {
     .floating-toc {
-      width: 200px !important;
+      /* Width is now handled by inline style via JS logic */
     }
     
     .toc-width {
