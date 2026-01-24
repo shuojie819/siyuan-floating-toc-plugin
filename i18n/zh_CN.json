@@ -8,5 +8,14 @@
   "followFocus": "跟随聚焦模式",
   "followFocusDesc": "开启后，进入聚焦模式时大纲只显示聚焦区域的标题；关闭后显示全文大纲并高亮聚焦区域。",
   "miniTocWidth": "Mini大纲宽度",
-  "miniTocWidthDesc": "折叠状态下的大纲条宽度（像素）"
+  "miniTocWidthDesc": "折叠状态下的大纲条宽度（像素）",
+  "toolbarActions": "工具栏功能",
+  "toolbarActionsDesc": "选择要在悬浮工具栏中显示的操作。",
+  "scrollToTop": "滚动到顶部",
+  "scrollToBottom": "滚动到底部",
+  "refreshDoc": "刷新大纲",
+  "togglePin": "固定/取消固定",
+  "toggleDockSide": "切换位置",
+  "collapseAll": "折叠所有",
+  "expandAll": "展开所有"
 }

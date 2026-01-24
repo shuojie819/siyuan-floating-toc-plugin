@@ -7,6 +7,7 @@
   export let dockSide: 'left' | 'right' = 'right';
   export let followFocus: boolean = true;
   export let miniTocWidth: number = 32;
+  export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
 
   type Heading = {
       id: string;
@@ -859,6 +860,48 @@
   let activeHeadingId = "";
   let scrollTimer: any = null;
 
+  // Actions map
+  const actionsMap = {
+      scrollToTop: {
+          icon: '<path fill="currentColor" d="M13,20H11V8L5.5,13.5L4.08,12.08L12,4.08L19.92,12.08L18.5,13.5L13,8V20Z" />',
+          handler: () => scrollToTop(),
+          title: "Scroll to Top"
+      },
+      scrollToBottom: {
+          icon: '<path fill="currentColor" d="M13,4H11V16L5.5,10.5L4.08,12L12,20L19.92,12L18.5,10.5L13,16V4Z" />',
+          handler: () => scrollToBottom(),
+          title: "Scroll to Bottom"
+      },
+      refreshDoc: {
+          icon: '<path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>',
+          handler: () => refreshDoc(),
+          title: "Refresh Document",
+          extraClass: (actionId: string) => isRefreshing ? "spinning" : ""
+      },
+      togglePin: {
+          icon: () => isPinned 
+            ? '<path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />'
+            : '<path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z" />',
+          handler: () => togglePin(),
+          title: () => isPinned ? "Unpin (Collapse)" : "Pin (Push Content)"
+      },
+      toggleDockSide: {
+          icon: '<path fill="currentColor" d="M6.5,10L2,14.5L6.5,19V16H11V13H6.5V10M17.5,10V13H13V16H17.5V19L22,14.5L17.5,10Z" />',
+          handler: () => toggleDockSide(),
+          title: "Switch Side"
+      },
+      collapseAll: {
+          icon: '<path fill="currentColor" d="M19,13H5V11H19V13Z" />',
+          handler: () => collapseAll(),
+          title: "Collapse All"
+      },
+      expandAll: {
+          icon: '<path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />',
+          handler: () => expandAll(),
+          title: "Expand All"
+      }
+  };
+
   const onScroll = () => {
       if (scrollTimer) return;
       if (headings.length === 0) return; // Optimization: don't query if no headings
@@ -958,15 +1001,21 @@
       
       <!-- Scroll Toolbar (Detached) -->
       <div class="scroll-toolbar">
-          <button class="scroll-btn" on:click={scrollToTop} title="Scroll to Top" aria-label="Scroll to Top">
-              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13,20H11V8L5.5,13.5L4.08,12.08L12,4.08L19.92,12.08L18.5,13.5L13,8V20Z" /></svg>
-          </button>
-          <button class="scroll-btn" on:click={scrollToBottom} title="Scroll to Bottom" aria-label="Scroll to Bottom">
-              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13,4H11V16L5.5,10.5L4.08,12L12,20L19.92,12L18.5,10.5L13,16V4Z" /></svg>
-          </button>
-          <button class="scroll-btn" on:click={refreshDoc} title="Refresh Document" aria-label="Refresh Document">
-              <svg viewBox="0 0 24 24" width="16" height="16" class:spinning={isRefreshing}><path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-          </button>
+          {#each toolbarConfig as actionId}
+              {#if actionsMap[actionId]}
+                  {@const action = actionsMap[actionId]}
+                  <button 
+                    class="scroll-btn" 
+                    on:click={action.handler} 
+                    title={typeof action.title === 'function' ? action.title() : action.title} 
+                    aria-label={typeof action.title === 'function' ? action.title() : action.title}
+                  >
+                      <svg viewBox="0 0 24 24" width="16" height="16" class={action.extraClass ? action.extraClass(actionId) : ''}>
+                        {@html typeof action.icon === 'function' ? action.icon() : action.icon}
+                      </svg>
+                  </button>
+              {/if}
+          {/each}
       </div>
 
       {#if isExpanded}
@@ -1088,9 +1137,7 @@
   
   /* 滚动工具栏样式 */
   .scroll-toolbar {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
+    display: grid;
     gap: 8px;
     padding: 2px;
     flex-shrink: 0;
@@ -1122,9 +1169,11 @@
   
   /* 折叠状态调整 */
   .floating-toc.collapsed .scroll-toolbar {
-    flex-direction: column;
-    align-items: center;
+    grid-template-rows: repeat(4, auto);
+    grid-auto-flow: column;
+    justify-content: center;
     gap: 4px;
+    width: max-content;
   }
   
   .floating-toc.collapsed .scroll-btn {
@@ -1137,6 +1186,15 @@
     width: 12px;
     height: 12px;
   }
+
+  /* 展开状态调整 */
+  .floating-toc.expanded .scroll-toolbar, 
+  .floating-toc.pinned .scroll-toolbar {
+      grid-template-columns: repeat(4, auto);
+      grid-auto-flow: row;
+      justify-content: center;
+  }
+
 
   /* 折叠状态面板 */
   .floating-toc.collapsed .toc-panel {

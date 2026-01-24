@@ -2,11 +2,20 @@
   "displayName": "Floating TOC",
   "toggle": "Toggle Floating TOC",
   "dockPosition": "Dock Position",
-  "dockPositionDesc": "Set whether the TOC appears on the left or right side",
+  "dockPositionDesc": "Set the default dock position of the TOC.",
   "left": "Left",
   "right": "Right",
   "followFocus": "Follow Focus Mode",
-  "followFocusDesc": "If enabled, TOC shows only headings in the focused area; if disabled, TOC shows full outline with focused area highlighted.",
+  "followFocusDesc": "If enabled, TOC only shows headings within the focus area when in Focus Mode. Otherwise, it shows full TOC and highlights the focus area.",
   "miniTocWidth": "Mini TOC Width",
-  "miniTocWidthDesc": "Width of the TOC bar when collapsed (pixels)"
+  "miniTocWidthDesc": "Width of the TOC strip when collapsed (px)",
+  "toolbarActions": "Toolbar Actions",
+  "toolbarActionsDesc": "Select actions to display in the floating toolbar.",
+  "scrollToTop": "Scroll to Top",
+  "scrollToBottom": "Scroll to Bottom",
+  "refreshDoc": "Refresh Outline",
+  "togglePin": "Pin/Unpin",
+  "toggleDockSide": "Switch Side",
+  "collapseAll": "Collapse All",
+  "expandAll": "Expand All"
 }

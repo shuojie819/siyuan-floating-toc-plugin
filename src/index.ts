@@ -1,5 +1,6 @@
-import { Plugin, Setting } from "siyuan";
+import { Plugin, Setting, Dialog } from "siyuan";
 import FloatingToc from "./FloatingToc.svelte";
+import SettingPanel from "./Setting.svelte";
 
 /**
  * 浮动目录插件
@@ -28,106 +29,9 @@ export default class FloatingTocPlugin extends Plugin {
         if (typeof this.data["config.json"].miniTocWidth === "undefined") {
             this.data["config.json"].miniTocWidth = 32;
         }
-
-        this.setting = new Setting({
-            confirmCallback: () => {
-                this.saveData("config.json", this.data["config.json"]);
-            }
-        });
-
-        this.setting.addItem({
-            title: this.i18n.dockPosition,
-            description: this.i18n.dockPositionDesc,
-            createActionElement: () => {
-                const select = document.createElement("select");
-                select.className = "b3-select fn__flex-center fn__size200";
-                select.innerHTML = `
-                    <option value="right">${this.i18n.right}</option>
-                    <option value="left">${this.i18n.left}</option>
-                `;
-                select.value = this.data["config.json"].dockSide || "right";
-                select.addEventListener("change", () => {
-                    const side = select.value;
-                    this.data["config.json"].dockSide = side;
-                    this.saveData("config.json", this.data["config.json"]);
-                    
-                    // Update all existing instances
-                    this.tocInstances.forEach((toc) => {
-                         toc.$set({ dockSide: side });
-                    });
-                });
-                return select;
-            },
-        });
-
-        this.setting.addItem({
-            title: this.i18n.followFocus,
-            description: this.i18n.followFocusDesc,
-            createActionElement: () => {
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.className = "b3-switch fn__flex-center";
-                checkbox.checked = this.data["config.json"].followFocus;
-                checkbox.addEventListener("change", () => {
-                    const checked = checkbox.checked;
-                    this.data["config.json"].followFocus = checked;
-                    this.saveData("config.json", this.data["config.json"]);
-                    
-                    // Update all existing instances
-                    this.tocInstances.forEach((toc) => {
-                         toc.$set({ followFocus: checked });
-                         // Force update to refresh headings based on new setting
-                         const protyleElement = (toc as any).targetElement;
-                         if (protyleElement) {
-                             const docId = this.getDocIdFromProtyleElement(protyleElement);
-                             if (docId) {
-                                 toc.updateHeadings(docId, (protyleElement as any).protyle);
-                             }
-                         }
-                    });
-                });
-                return checkbox;
-            },
-        });
-
-        this.setting.addItem({
-            title: this.i18n.miniTocWidth,
-            description: this.i18n.miniTocWidthDesc,
-            createActionElement: () => {
-                const container = document.createElement("div");
-                container.className = "fn__flex-center";
-                
-                const slider = document.createElement("input");
-                slider.type = "range";
-                slider.min = "20";
-                slider.max = "50";
-                slider.step = "1";
-                slider.className = "b3-slider fn__size200";
-                slider.style.marginRight = "10px";
-                slider.value = this.data["config.json"].miniTocWidth || "32";
-                
-                const label = document.createElement("span");
-                label.style.width = "40px";
-                label.style.textAlign = "right";
-                label.textContent = `${slider.value}px`;
-                
-                slider.addEventListener("input", () => {
-                    label.textContent = `${slider.value}px`;
-                    const width = parseInt(slider.value);
-                    this.data["config.json"].miniTocWidth = width;
-                    this.saveData("config.json", this.data["config.json"]);
-                    
-                    // Update all existing instances
-                    this.tocInstances.forEach((toc) => {
-                         toc.$set({ miniTocWidth: width });
-                    });
-                });
-                
-                container.appendChild(slider);
-                container.appendChild(label);
-                return container;
-            },
-        });
+        if (typeof this.data["config.json"].toolbarConfig === "undefined") {
+            this.data["config.json"].toolbarConfig = ["scrollToTop", "scrollToBottom", "refreshDoc"];
+        }
 
         // 绑定事件处理函数
         this.switchProtyleHandler = this.onSwitchProtyle.bind(this);
@@ -139,6 +43,26 @@ export default class FloatingTocPlugin extends Plugin {
             position: "right",
             callback: () => {
                 this.toggleToc();
+            }
+        });
+    }
+
+
+    openSetting() {
+        const dialog = new Dialog({
+            title: this.i18n.displayName || "Floating TOC",
+            content: `<div id="SettingPanel" style="height: 100%;"></div>`,
+            width: "800px",
+            height: "700px",
+            destroyCallback: () => {
+                pannel.$destroy();
+            }
+        });
+
+        const pannel = new SettingPanel({
+            target: dialog.element.querySelector("#SettingPanel"),
+            props: {
+                plugin: this
             }
         });
     }
@@ -626,6 +550,7 @@ export default class FloatingTocPlugin extends Plugin {
         const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
         const followFocus = config.followFocus !== false;
         const miniTocWidth = config.miniTocWidth || 32;
+        const toolbarConfig = config.toolbarConfig || ["scrollToTop", "scrollToBottom", "refreshDoc"];
 
         // Create TOC component
         const toc = new FloatingToc({
@@ -635,7 +560,8 @@ export default class FloatingTocPlugin extends Plugin {
                 targetElement: protyleElement,
                 dockSide: dockSide,
                 followFocus: followFocus,
-                miniTocWidth: miniTocWidth
+                miniTocWidth: miniTocWidth,
+                toolbarConfig: toolbarConfig
             }
         });
         if (typeof (toc as any).setVisible === "function") {

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-01-24
+
+### Refactored
+- **Settings Panel Overhaul**: Completely rebuilt the settings interface using Svelte. It now features a modern, spacious dual-column layout (Sidebar + Content) inside a custom Dialog window (800x700), providing a native and seamless user experience.
+- **Settings Architecture**: Moved away from the default restricted settings injection to a full custom Dialog implementation, effectively eliminating previous layout artifacts (such as stray vertical lines and "undefined" labels).
+
+### Added
+- **Toolbar Customization**: Users can now individually enable or disable specific buttons in the floating toolbar (Scroll Top/Bottom, Refresh, Pin/Unpin, Switch Side, Collapse/Expand All) via the new "Toolbar Functions" tab in settings.
+- **Internationalization (i18n)**: Added complete Chinese and English translations for all Toolbar Action options in the settings panel.
+
+### Optimized
+- **UI Polish**: Refined the Settings Panel UI with clear vertical dividers, improved spacing, and correct alignment of controls.
+
 ## [0.1.9] - 2025-01-24
 
 ### Added
