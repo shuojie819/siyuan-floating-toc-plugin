@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.11] - 2026-01-24
+
+### Added
+- **Custom CSS Support**: Added a new "Style" tab in the settings panel, allowing users to inject custom CSS to override default plugin styles.
+
+### Optimized
+- **Settings UI**: Improved the layout and visual consistency of the settings panel.
+
 ## [0.1.10] - 2026-01-24
 
 ### Refactored

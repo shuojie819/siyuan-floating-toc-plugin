@@ -1,4 +1,4 @@
-import { Plugin, Setting, Dialog } from "siyuan";
+import { Plugin, Dialog } from "siyuan";
 import FloatingToc from "./FloatingToc.svelte";
 import SettingPanel from "./Setting.svelte";
 
@@ -45,6 +45,19 @@ export default class FloatingTocPlugin extends Plugin {
                 this.toggleToc();
             }
         });
+    }
+
+    /**
+     * 应用自定义 CSS
+     */
+    applyCustomCss(css: string) {
+        let style = document.getElementById("floating-toc-custom-css");
+        if (!style) {
+            style = document.createElement("style");
+            style.id = "floating-toc-custom-css";
+            document.head.appendChild(style);
+        }
+        style.textContent = css || "";
     }
 
 

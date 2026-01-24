@@ -9,14 +9,16 @@
         dockSide: "right",
         followFocus: true,
         miniTocWidth: 32,
-        toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"]
+        toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
+        customCss: ""
     };
 
     let activeTab = 'outline';
     
-    const tabs = [
+    $: tabs = [
         { id: 'outline', label: '大纲功能' }, // Outline Functions
-        { id: 'toolbar', label: '功能区功能' } // Toolbar Functions
+        { id: 'toolbar', label: '功能区功能' }, // Toolbar Functions
+        { id: 'style', label: plugin.i18n.style || '样式' }
     ];
 
     // Toolbar actions definition
@@ -43,6 +45,11 @@
     async function saveConfig() {
         plugin.data["config.json"] = config;
         await plugin.saveData("config.json", config);
+        
+        // Apply custom CSS
+        if (typeof plugin.applyCustomCss === 'function') {
+            plugin.applyCustomCss(config.customCss);
+        }
         
         // Notify instances to update
         plugin.tocInstances.forEach((toc) => {
@@ -101,6 +108,8 @@
 <div class="config__panel">
     <ul class="b3-tab-bar b3-list b3-list--background">
         {#each tabs as tab}
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
             <li class="b3-list-item {activeTab === tab.id ? 'b3-list-item--selected' : ''}" 
                 on:click={() => activeTab = tab.id}
                 on:keydown={() => {}}>
@@ -155,6 +164,22 @@
                     <span>{plugin.i18n[action.id]}</span>
                 </div>
             {/each}
+        {/if}
+
+        {#if activeTab === 'style'}
+            <div class="b3-label" style="display: block;">
+                <div class="fn__flex-1">
+                    <div class="fn__flex-center">{plugin.i18n.customCss}</div>
+                    <div class="b3-label__text">{@html plugin.i18n.customCssDesc}</div>
+                </div>
+            </div>
+            <textarea 
+                class="b3-text-field fn__block" 
+                style="height: 400px; width: 100%; font-family: monospace; resize: vertical;"
+                value={config.customCss}
+                placeholder={plugin.i18n.customCssPlaceholder}
+                on:input={(e) => handleSettingChange('customCss', e.currentTarget.value)}
+            ></textarea>
         {/if}
     </div>
 </div>

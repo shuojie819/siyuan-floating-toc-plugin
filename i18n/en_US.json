@@ -17,5 +17,9 @@
   "togglePin": "Pin/Unpin",
   "toggleDockSide": "Switch Side",
   "collapseAll": "Collapse All",
-  "expandAll": "Expand All"
+  "expandAll": "Expand All",
+  "style": "Style",
+  "customCss": "Custom CSS",
+  "customCssDesc": "Enter custom CSS here to override default styles.<br>E.g.: .siyuan-floating-toc-plugin-container { background: red; }",
+  "customCssPlaceholder": "Please enter here, your input will be automatically saved"
 }

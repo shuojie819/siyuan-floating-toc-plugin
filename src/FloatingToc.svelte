@@ -988,6 +988,7 @@
       <!-- Resize Handle -->
       <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
       <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
       <div 
         class="resize-handle" 
         class:left={dockSide==='right'} 
