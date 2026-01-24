@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9] - 2025-01-24
+
+### Added
+- Added support for Database (Attribute View) Grouping. When focusing on a database with groups, the TOC will now display the groups as navigation items.
+- Enhanced "Follow Focus" behavior: When viewing a Database with groups, the TOC will automatically switch to DOM parsing mode to correctly display the groups, regardless of the "Follow Focus Mode" setting.
+
 ## [0.1.8] - 2025-01-24
 
 ### Added

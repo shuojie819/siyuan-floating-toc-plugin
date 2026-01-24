@@ -543,11 +543,15 @@
   const collectHeadingsFromDom = (root: HTMLElement): Heading[] => {
       const contentRoot =
           (root.querySelector(".protyle-content") as HTMLElement | null) || root;
+      
+      const list: Heading[] = [];
+      let syntheticIndex = 0;
+
+      // 1. Collect standard headings
       const elements = Array.from(
           contentRoot.querySelectorAll('[data-type="NodeHeading"], h1, h2, h3, h4, h5, h6')
       ) as HTMLElement[];
-      const list: Heading[] = [];
-      let syntheticIndex = 0;
+      
       elements.forEach((el) => {
           if (el.tagName && /^h[1-6]$/i.test(el.tagName)) {
               const parentHeading = el.closest('[data-type="NodeHeading"]');
@@ -573,6 +577,33 @@
               element: el
           });
       });
+
+      // 2. Collect Database Groups
+      const avGroups = Array.from(contentRoot.querySelectorAll('.av__group-title')) as HTMLElement[];
+      avGroups.forEach((el) => {
+          const icon = el.querySelector('.av__group-icon');
+          const name = el.querySelector('.av__group-name');
+          const counter = el.querySelector('.av__group-counter');
+          // The ID is usually on the icon element for AV groups
+          const id = icon?.getAttribute("data-id");
+          
+          if (id && name) {
+              list.push({
+                  id,
+                  content: (name.textContent || "") + (counter ? ` ${counter.textContent}` : ""),
+                  depth: 1, // Groups are top-level
+                  subType: "av-group",
+                  element: el
+              });
+          }
+      });
+
+      // Sort all items by document position
+      list.sort((a, b) => {
+          if (!a.element || !b.element) return 0;
+          return (a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+      });
+
       return list;
   };
 
@@ -598,15 +629,20 @@
 
       // Check for Focus Mode (Zoom In) via DOM
       let isFocusMode = false;
+      let hasDatabaseGroups = false;
+
       if (targetElement) {
           const exitFocusBtn = targetElement.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]');
           isFocusMode = !!(exitFocusBtn && !exitFocusBtn.classList.contains("fn__none"));
+          // Check for Database Groups
+          hasDatabaseGroups = targetElement.querySelector('.av__group-title') !== null;
       }
 
       if (isFocusMode && targetElement) {
-          // If Follow Focus is enabled, use the DOM parser to get only focused headings
-          if (followFocus) {
-              // console.log("Floating TOC: Focus Mode detected & Follow Focus is ON. Using DOM parser.");
+          // If Follow Focus is enabled OR we are looking at a Database with groups
+          // User Request: Even if followFocus is false, if isDatabaseWithGroups is true, treat as followFocus = true.
+          if (followFocus || hasDatabaseGroups) {
+              // console.log("Floating TOC: Focus Mode detected & Follow Focus is ON (or DB groups present). Using DOM parser.");
               const domHeadings = collectHeadingsFromDom(targetElement);
               headings = [];
               await new Promise(resolve => setTimeout(resolve, 0));
@@ -755,7 +791,7 @@
       }
 
       const searchRoot: ParentNode = targetElement || document;
-      const targetElements = targetBlock ? [] : searchRoot.querySelectorAll(`[data-node-id="${heading.id}"]`);
+      const targetElements = targetBlock ? [] : searchRoot.querySelectorAll(`[data-node-id="${heading.id}"], [data-id="${heading.id}"]`);
       
       for (const element of Array.from(targetElements)) {
         // 跳过嵌入块、不可见元素
@@ -774,6 +810,14 @@
         // 其次选择带有data-node-id的块元素
         else if (element.hasAttribute('data-node-id')) {
           targetBlock = element;
+        }
+        // 支持数据库分组 (AV Groups)
+        else if (element.hasAttribute('data-id')) {
+           // 如果找到的是icon，尝试定位到父级的title，或者直接用这个元素
+           // 这里的element可能是 .av__group-icon，因为它的 data-id 匹配
+           // 如果是icon，我们可能想滚动到它的父级 .av__group-title
+           const groupTitle = element.closest('.av__group-title');
+           targetBlock = groupTitle || element;
         }
       }
       
