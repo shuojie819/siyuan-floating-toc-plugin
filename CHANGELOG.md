@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.8] - 2025-01-24
 
+### Added
+- Added "Mini TOC Width" setting option, allowing customization of the TOC width in collapsed state (20px-50px).
+
+### Optimized
+- Optimized the visual display of the Mini TOC: strip length now varies dynamically based on heading level (stepped effect), and alignment automatically follows the dock side (left-aligned when docked left, right-aligned when docked right).
+
 ### Fixed
 - Fixed an issue where a blank space appeared on the right side of the TOC on mobile devices (width <= 768px) due to inconsistency between calculation and rendering width.
 - Fixed a visual glitch where expanding the mini TOC on the left side caused the document content to shift abruptly by ensuring consistent padding is maintained.

@@ -6,5 +6,7 @@
   "left": "Left",
   "right": "Right",
   "followFocus": "Follow Focus Mode",
-  "followFocusDesc": "If enabled, TOC shows only headings in the focused area; if disabled, TOC shows full outline with focused area highlighted."
+  "followFocusDesc": "If enabled, TOC shows only headings in the focused area; if disabled, TOC shows full outline with focused area highlighted.",
+  "miniTocWidth": "Mini TOC Width",
+  "miniTocWidthDesc": "Width of the TOC bar when collapsed (pixels)"
 }

@@ -6,6 +6,7 @@
   export let targetElement: HTMLElement;
   export let dockSide: 'left' | 'right' = 'right';
   export let followFocus: boolean = true;
+  export let miniTocWidth: number = 32;
 
   type Heading = {
       id: string;
@@ -117,12 +118,12 @@
                // Left dock always needs padding to avoid covering block markers
                paddingNeeded = true;
            } else {
-               left = rect.right - (isExpanded ? effectiveTocWidth : 32) - resizeHandleOffset;
+               left = rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - resizeHandleOffset;
                paddingNeeded = false;
            }
        }
       
-      const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : '';
+      const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
       
       pinnedStyle = `top: ${top}px; left: ${left}px; height: ${height}px; ${widthStyle}`;
       
@@ -132,7 +133,10 @@
        } else if (dockSide === 'left') {
            // For left dock (both collapsed AND expanded), always apply minimal padding 
            // to maintain consistent layout and keep block markers accessible.
-           updateEditorPadding(targetElement, 42); // 32px (width) + 10px (gap)
+           // Use miniTocWidth + 10 as safe margin for collapsed state, but here we cover both.
+           // If collapsed, width is miniTocWidth.
+           const width = isExpanded ? effectiveTocWidth : miniTocWidth;
+           updateEditorPadding(targetElement, width + 10); // width + 10px (gap)
        } else {
            updateEditorPadding(targetElement, 0);
        }
@@ -974,7 +978,14 @@
     {:else}
       <!-- Collapsed State: Mini-map with strips -->
        <!-- svelte-ignore a11y-no-static-element-interactions -->
-       <div class="collapsed-strip" class:right={dockSide==='right'} on:mouseenter={onMouseEnter} role="region" aria-label="Collapsed TOC">
+       <div 
+         class="collapsed-strip" 
+         class:right-align={dockSide==='right'} 
+         class:left-align={dockSide==='left'} 
+         on:mouseenter={onMouseEnter} 
+         role="region" 
+         aria-label="Collapsed TOC"
+       >
            <div class="strip-content">
                {#if headings.length === 0}
                    <!-- Show a placeholder dot if no headings -->
@@ -985,7 +996,7 @@
                            class="strip-item"
                            class:active={heading.id === activeHeadingId}
                            data-id={heading.id}
-                           style="width: {100 - (heading.depth - 1) * 10}%;"
+                           style="width: {Math.max(20, 100 - (heading.depth - 1) * 15)}%;"
                            on:click|stopPropagation={() => handleClick(heading)}
                            on:keydown|stopPropagation={(e) => e.key === 'Enter' && handleClick(heading)}
                            title={heading.content}
@@ -1092,7 +1103,7 @@
   
   /* 折叠状态 */
   .floating-toc.collapsed {
-    width: 32px !important;
+    /* width: 32px !important; REMOVED: width is now handled by inline style */
     opacity: 0.8;
     background: transparent;
     border: none;
@@ -1112,9 +1123,16 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    align-items: center;
     padding: 60px 0 8px 0;
     scrollbar-width: none;
+  }
+  
+  .collapsed-strip.right-align {
+    align-items: flex-end;
+  }
+
+  .collapsed-strip.left-align {
+    align-items: flex-start;
   }
   
   .collapsed-strip::-webkit-scrollbar {
@@ -1125,8 +1143,16 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 14px;
+  }
+  
+  /* Inherit alignment from parent */
+  .collapsed-strip.right-align .strip-content {
+    align-items: flex-end;
+  }
+  
+  .collapsed-strip.left-align .strip-content {
+    align-items: flex-start;
   }
   
   .strip-item {

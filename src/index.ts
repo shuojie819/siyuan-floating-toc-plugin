@@ -20,10 +20,13 @@ export default class FloatingTocPlugin extends Plugin {
         // Load config
         await this.loadData("config.json");
         if (!this.data["config.json"]) {
-            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true };
+            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true, miniTocWidth: 32 };
         }
         if (typeof this.data["config.json"].followFocus === "undefined") {
             this.data["config.json"].followFocus = true;
+        }
+        if (typeof this.data["config.json"].miniTocWidth === "undefined") {
+            this.data["config.json"].miniTocWidth = 32;
         }
 
         this.setting = new Setting({
@@ -84,6 +87,45 @@ export default class FloatingTocPlugin extends Plugin {
                     });
                 });
                 return checkbox;
+            },
+        });
+
+        this.setting.addItem({
+            title: this.i18n.miniTocWidth,
+            description: this.i18n.miniTocWidthDesc,
+            createActionElement: () => {
+                const container = document.createElement("div");
+                container.className = "fn__flex-center";
+                
+                const slider = document.createElement("input");
+                slider.type = "range";
+                slider.min = "20";
+                slider.max = "50";
+                slider.step = "1";
+                slider.className = "b3-slider fn__size200";
+                slider.style.marginRight = "10px";
+                slider.value = this.data["config.json"].miniTocWidth || "32";
+                
+                const label = document.createElement("span");
+                label.style.width = "40px";
+                label.style.textAlign = "right";
+                label.textContent = `${slider.value}px`;
+                
+                slider.addEventListener("input", () => {
+                    label.textContent = `${slider.value}px`;
+                    const width = parseInt(slider.value);
+                    this.data["config.json"].miniTocWidth = width;
+                    this.saveData("config.json", this.data["config.json"]);
+                    
+                    // Update all existing instances
+                    this.tocInstances.forEach((toc) => {
+                         toc.$set({ miniTocWidth: width });
+                    });
+                });
+                
+                container.appendChild(slider);
+                container.appendChild(label);
+                return container;
             },
         });
 
@@ -583,6 +625,7 @@ export default class FloatingTocPlugin extends Plugin {
         const config = this.data["config.json"] || {};
         const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
         const followFocus = config.followFocus !== false;
+        const miniTocWidth = config.miniTocWidth || 32;
 
         // Create TOC component
         const toc = new FloatingToc({
@@ -591,7 +634,8 @@ export default class FloatingTocPlugin extends Plugin {
                 plugin: this,
                 targetElement: protyleElement,
                 dockSide: dockSide,
-                followFocus: followFocus
+                followFocus: followFocus,
+                miniTocWidth: miniTocWidth
             }
         });
         if (typeof (toc as any).setVisible === "function") {
