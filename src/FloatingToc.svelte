@@ -445,7 +445,7 @@
       const currentConfig = plugin.data["config.json"] || {};
       const defaultDockSide = currentConfig.dockSide || 'right';
       
-      const newData = { isPinned, dockSide: defaultDockSide, tocWidth };
+      const newData = { ...currentConfig, isPinned, dockSide: defaultDockSide, tocWidth };
       plugin.data["config.json"] = newData;
       plugin.saveData("config.json", newData);
   };

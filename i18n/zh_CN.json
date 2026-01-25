@@ -20,6 +20,6 @@
   "expandAll": "展开所有",
   "style": "样式",
   "customCss": "自定义 CSS",
-  "customCssDesc": "在此处输入自定义 CSS 代码，可覆盖插件默认样式。<br>例如：.siyuan-floating-toc-plugin-container { background: red; }",
+  "customCssDesc": "在此处输入自定义 CSS 代码，可覆盖插件默认样式。<br>例如：.siyuan-floating-toc-plugin-container .toc-panel { background: red !important; }",
   "customCssPlaceholder": "请在这里输入，您的输入将会被自动保存"
 }

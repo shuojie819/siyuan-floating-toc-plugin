@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.12] - 2026-01-25
+
+### Fixed
+- **Settings Persistence**: Fixed a critical issue where toggling the "Pin" state or switching dock sides would accidentally reset other configuration items (such as Custom CSS) to their defaults.
+- **Custom CSS Example**: Corrected the example code in the Custom CSS settings description to correctly target the visible panel (`.siyuan-floating-toc-plugin-container .toc-panel`) and use `!important` to ensure styles are applied effectively.
+
 ## [0.1.11] - 2026-01-24
 
 ### Added

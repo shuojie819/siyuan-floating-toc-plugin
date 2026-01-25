@@ -20,6 +20,6 @@
   "expandAll": "Expand All",
   "style": "Style",
   "customCss": "Custom CSS",
-  "customCssDesc": "Enter custom CSS here to override default styles.<br>E.g.: .siyuan-floating-toc-plugin-container { background: red; }",
+  "customCssDesc": "Enter custom CSS here to override default styles.<br>E.g.: .siyuan-floating-toc-plugin-container .toc-panel { background: red !important; }",
   "customCssPlaceholder": "Please enter here, your input will be automatically saved"
 }
