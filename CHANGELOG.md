@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.14] - 2026-01-25
+
+### Fixed
+- **Left Dock Layout Stability**: Fixed an issue where hovering over the mini TOC on the left side would cause the document content to shift abruptly. The document content is now only pushed when the TOC is explicitly pinned.
+
 ## [0.1.13] - 2026-01-25
 
 ### Added

@@ -144,8 +144,8 @@
            // to maintain consistent layout and keep block markers accessible.
            // Use miniTocWidth + 10 as safe margin for collapsed state, but here we cover both.
            // If collapsed, width is miniTocWidth.
-           const width = isExpanded ? effectiveTocWidth : miniTocWidth;
-           updateEditorPadding(targetElement, width + 10); // width + 10px (gap)
+          const width = isPinned ? effectiveTocWidth : miniTocWidth;
+          updateEditorPadding(targetElement, width + 10); // width + 10px (gap)
        } else {
            updateEditorPadding(targetElement, 0);
        }
