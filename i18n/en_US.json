@@ -7,6 +7,8 @@
   "right": "Right",
   "followFocus": "Follow Focus Mode",
   "followFocusDesc": "If enabled, TOC only shows headings within the focus area when in Focus Mode. Otherwise, it shows full TOC and highlights the focus area.",
+  "adaptiveHeight": "Adaptive Height",
+  "adaptiveHeightDesc": "If enabled, the TOC container height adjusts to its content instead of filling the available height.",
   "miniTocWidth": "Mini TOC Width",
   "miniTocWidthDesc": "Width of the TOC strip when collapsed (px)",
   "toolbarActions": "Toolbar Actions",

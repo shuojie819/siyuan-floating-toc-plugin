@@ -8,6 +8,7 @@
     let config = {
         dockSide: "right",
         followFocus: true,
+        adaptiveHeight: false,
         miniTocWidth: 32,
         toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
         customCss: ""
@@ -57,6 +58,7 @@
              toc.$set({ 
                  dockSide: config.dockSide,
                  followFocus: config.followFocus,
+                 adaptiveHeight: config.adaptiveHeight,
                  miniTocWidth: config.miniTocWidth,
                  toolbarConfig: config.toolbarConfig
              });
@@ -135,6 +137,14 @@
                 description={plugin.i18n.followFocusDesc}
                 value={config.followFocus}
                 on:change={(e) => handleSettingChange('followFocus', e.detail)}
+            />
+
+            <SettingItem 
+                type="checkbox" 
+                title={plugin.i18n.adaptiveHeight} 
+                description={plugin.i18n.adaptiveHeightDesc}
+                value={config.adaptiveHeight}
+                on:change={(e) => handleSettingChange('adaptiveHeight', e.detail)}
             />
             
             <SettingItem 

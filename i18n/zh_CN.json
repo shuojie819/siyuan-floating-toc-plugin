@@ -7,6 +7,8 @@
   "right": "右侧",
   "followFocus": "跟随聚焦模式",
   "followFocusDesc": "开启后，进入聚焦模式时大纲只显示聚焦区域的标题；关闭后显示全文大纲并高亮聚焦区域。",
+  "adaptiveHeight": "自适应高度",
+  "adaptiveHeightDesc": "开启后，大纲容器高度将根据内容自动调整，不再强制占满可用高度。",
   "miniTocWidth": "Mini大纲宽度",
   "miniTocWidthDesc": "折叠状态下的大纲条宽度（像素）",
   "toolbarActions": "工具栏功能",

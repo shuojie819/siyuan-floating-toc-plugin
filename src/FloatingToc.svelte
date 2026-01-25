@@ -6,6 +6,7 @@
   export let targetElement: HTMLElement;
   export let dockSide: 'left' | 'right' = 'right';
   export let followFocus: boolean = true;
+  export let adaptiveHeight: boolean = false;
   export let miniTocWidth: number = 32;
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
 
@@ -64,7 +65,7 @@
       const rect = content.getBoundingClientRect();
 
       const top = Math.max(rect.top, 80); // Ensure minimal top margin
-      const height = Math.min(rect.height, window.innerHeight - top - 20); // Adjust height
+      const maxHeight = Math.min(rect.height, window.innerHeight - top - 20); // Adjust height
       let left = 0;
       
       const resizeHandleOffset = 6; 
@@ -126,7 +127,14 @@
       
       const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
       
-      pinnedStyle = `top: ${top}px; left: ${left}px; height: ${height}px; ${widthStyle}`;
+      // Handle adaptive height
+      // If adaptiveHeight is enabled, we use max-height and let height be auto.
+      // Otherwise, we force height to be the calculated available height.
+      const heightStyle = adaptiveHeight 
+          ? `max-height: ${maxHeight}px; height: auto;` 
+          : `height: ${maxHeight}px;`;
+
+      pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
       
        if (isPinned && paddingNeeded) {
            const extra = (dockSide === 'left') ? 42 : 0;
@@ -196,7 +204,7 @@
   };
 
   // Watch for changes
-  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth || visible) {
+  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth || visible || adaptiveHeight) {
       if (visible) {
           updatePosition();
       } else {
@@ -221,6 +229,7 @@
           isPinned = savedData.isPinned ?? false;
           dockSide = savedData.dockSide ?? 'right';
           tocWidth = savedData.tocWidth ?? 250;
+          adaptiveHeight = savedData.adaptiveHeight ?? false;
       }
       
       window.addEventListener('resize', updatePosition);
@@ -445,7 +454,7 @@
       const currentConfig = plugin.data["config.json"] || {};
       const defaultDockSide = currentConfig.dockSide || 'right';
       
-      const newData = { ...currentConfig, isPinned, dockSide: defaultDockSide, tocWidth };
+      const newData = { ...currentConfig, isPinned, dockSide: defaultDockSide, tocWidth, adaptiveHeight };
       plugin.data["config.json"] = newData;
       plugin.saveData("config.json", newData);
   };

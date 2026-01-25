@@ -21,10 +21,13 @@ export default class FloatingTocPlugin extends Plugin {
         // Load config
         await this.loadData("config.json");
         if (!this.data["config.json"]) {
-            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true, miniTocWidth: 32 };
+            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true, miniTocWidth: 32, adaptiveHeight: false };
         }
         if (typeof this.data["config.json"].followFocus === "undefined") {
             this.data["config.json"].followFocus = true;
+        }
+        if (typeof this.data["config.json"].adaptiveHeight === "undefined") {
+            this.data["config.json"].adaptiveHeight = false;
         }
         if (typeof this.data["config.json"].miniTocWidth === "undefined") {
             this.data["config.json"].miniTocWidth = 32;
@@ -562,6 +565,7 @@ export default class FloatingTocPlugin extends Plugin {
         const config = this.data["config.json"] || {};
         const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
         const followFocus = config.followFocus !== false;
+        const adaptiveHeight = config.adaptiveHeight === true;
         const miniTocWidth = config.miniTocWidth || 32;
         const toolbarConfig = config.toolbarConfig || ["scrollToTop", "scrollToBottom", "refreshDoc"];
 
@@ -573,6 +577,7 @@ export default class FloatingTocPlugin extends Plugin {
                 targetElement: protyleElement,
                 dockSide: dockSide,
                 followFocus: followFocus,
+                adaptiveHeight: adaptiveHeight,
                 miniTocWidth: miniTocWidth,
                 toolbarConfig: toolbarConfig
             }

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.13] - 2026-01-25
+
+### Added
+- **Adaptive Height**: Added a new configuration option "Adaptive Height" (default: false). When enabled, the TOC container height automatically adjusts to fit its content instead of filling the entire available vertical space. This is especially useful for short outlines.
+
 ## [0.1.12] - 2026-01-25
 
 ### Fixed
