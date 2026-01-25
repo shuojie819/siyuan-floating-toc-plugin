@@ -1,4 +1,7 @@
 import { Plugin, Dialog } from "siyuan";
+import { FullscreenHelper } from "./libs/FullscreenHelper";
+// @ts-ignore
+import fullscreenCss from "./assets/fullscreen-helper.scss?inline";
 import FloatingToc from "./FloatingToc.svelte";
 import SettingPanel from "./Setting.svelte";
 
@@ -11,11 +14,20 @@ export default class FloatingTocPlugin extends Plugin {
     private tocDocIds: Map<HTMLElement, string> = new Map();
     private tocVisible = true;
     private observer: MutationObserver | undefined;
+    private fullscreenHelper: FullscreenHelper;
     private switchProtyleHandler: (event: CustomEvent<any>) => void;
     private checkProtylesDebounceTimer: number | undefined;
     private searchPreviewCheckInterval: number | undefined;
 
     async onload() {
+        this.addIcons(`<symbol id="iconFullscreen" viewBox="0 0 32 32">
+<path d="M5 5v8h3v10h10v3h-13a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3H5zm19 0v8h3v10h10v3h-13a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3h-3z"></path>
+<path d="M8 8h8v3H8v-3zm0 14h8v3H8v-3zm14-14h3v8h3v-8h3v-3h-9v3z"></path>
+</symbol>
+<symbol id="iconFullscreenExit" viewBox="0 0 32 32">
+<path d="M8 3v6h5v11h11v5H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h6zM3 24h6v-5H3v11a1 1 0 0 1-1 1H0V24a1 1 0 0 1 1-1h2zm19 0v6h6v-5h-5V8h-6v5h11v11h5z"></path>
+</symbol>`);
+
         // console.log("Floating TOC loaded");
         
         // Load config
@@ -35,7 +47,26 @@ export default class FloatingTocPlugin extends Plugin {
         if (typeof this.data["config.json"].toolbarConfig === "undefined") {
             this.data["config.json"].toolbarConfig = ["scrollToTop", "scrollToBottom", "refreshDoc"];
         }
+        if (typeof this.data["config.json"].fullscreenConfig === "undefined") {
+            this.data["config.json"].fullscreenConfig = {
+                enableFullscreenHelper: true,
+                enableMermaid: true,
+                enableECharts: true,
+                enableSheetMusic: true,
+                enableGraphviz: true,
+                enableFlowchart: true,
+                enableIFrame: true,
+                enableDoubleClick: true,
+                buttonPosition: "top-left"
+            };
+        } else if (typeof this.data["config.json"].fullscreenConfig.enableFullscreenHelper === "undefined") {
+             // Migration for existing config
+             this.data["config.json"].fullscreenConfig.enableFullscreenHelper = true;
+        }
 
+        // Initialize Fullscreen Helper
+        this.fullscreenHelper = new FullscreenHelper(this, this.data["config.json"].fullscreenConfig);
+        
         // 绑定事件处理函数
         this.switchProtyleHandler = this.onSwitchProtyle.bind(this);
         
@@ -48,6 +79,23 @@ export default class FloatingTocPlugin extends Plugin {
                 this.toggleToc();
             }
         });
+        
+        // 注入全屏辅助 CSS
+        this.applyFullscreenCss(fullscreenCss);
+    }
+
+    /**
+     * 应用全屏辅助 CSS
+     */
+    applyFullscreenCss(css: string) {
+        if (!css) return;
+        let style = document.getElementById("fullscreen-helper-css");
+        if (!style) {
+            style = document.createElement("style");
+            style.id = "fullscreen-helper-css";
+            document.head.appendChild(style);
+        }
+        style.textContent = css;
     }
 
     /**
@@ -61,6 +109,12 @@ export default class FloatingTocPlugin extends Plugin {
             document.head.appendChild(style);
         }
         style.textContent = css || "";
+    }
+
+    updateFullscreenHelperConfig(config: any) {
+        if (this.fullscreenHelper) {
+            this.fullscreenHelper.updateConfig(config);
+        }
     }
 
 
@@ -84,6 +138,11 @@ export default class FloatingTocPlugin extends Plugin {
     }
 
     onLayoutReady() {
+        // Initialize Fullscreen Helper
+        if (this.fullscreenHelper) {
+            this.fullscreenHelper.init();
+        }
+
         // 监听文档切换事件
         this.eventBus.on("switch-protyle", this.switchProtyleHandler);
         
@@ -111,6 +170,10 @@ export default class FloatingTocPlugin extends Plugin {
         if (this.observer) {
             this.observer.disconnect();
             this.observer = undefined;
+        }
+        
+        if (this.fullscreenHelper) {
+            this.fullscreenHelper.destroy();
         }
         
         // 清理事件监听

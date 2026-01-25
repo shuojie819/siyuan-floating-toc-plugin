@@ -1114,7 +1114,7 @@
   </div>
 {/if}
 
-<style>
+<style lang="scss">
   .floating-toc {
     position: fixed;
     z-index: 10;

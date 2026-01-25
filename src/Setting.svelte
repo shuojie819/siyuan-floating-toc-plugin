@@ -11,7 +11,18 @@
         adaptiveHeight: false,
         miniTocWidth: 32,
         toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
-        customCss: ""
+        customCss: "",
+        fullscreenConfig: {
+            enableFullscreenHelper: true,
+            enableMermaid: true,
+            enableECharts: true,
+            enableSheetMusic: true,
+            enableGraphviz: true,
+            enableFlowchart: true,
+            enableIFrame: true,
+            enableDoubleClick: true,
+            buttonPosition: "top-left"
+        }
     };
 
     let activeTab = 'outline';
@@ -19,6 +30,7 @@
     $: tabs = [
         { id: 'outline', label: '大纲功能' }, // Outline Functions
         { id: 'toolbar', label: '功能区功能' }, // Toolbar Functions
+        { id: 'fullscreen', label: '全屏辅助' }, // Fullscreen Helper
         { id: 'style', label: plugin.i18n.style || '样式' }
     ];
 
@@ -105,6 +117,13 @@
         config.toolbarConfig = newConfig;
         saveConfig();
     }
+    function handleFullscreenChange(key, value) {
+        config.fullscreenConfig[key] = value;
+        saveConfig();
+        if (typeof plugin.updateFullscreenHelperConfig === 'function') {
+            plugin.updateFullscreenHelperConfig(config.fullscreenConfig);
+        }
+    }
 </script>
 
 <div class="config__panel">
@@ -174,6 +193,94 @@
                     <span>{plugin.i18n[action.id]}</span>
                 </div>
             {/each}
+        {/if}
+
+        {#if activeTab === 'fullscreen'}
+            <div class="b3-label" style="display: block;">
+                <div class="fn__flex-1">
+                    <div class="fn__flex-center">{plugin.i18n.settingsTitle || '全屏辅助设置'}</div>
+                    <div class="b3-label__text">{plugin.i18n.fullscreenSettingsDesc || '开启或关闭各类图表的全屏查看功能'}</div>
+                </div>
+            </div>
+
+            <SettingItem 
+                type="checkbox" 
+                title={plugin.i18n.enableFullscreenHelper || '启用全屏辅助'} 
+                description={plugin.i18n.enableFullscreenHelperDesc || '总开关：开启或关闭全屏辅助功能'}
+                value={config.fullscreenConfig.enableFullscreenHelper}
+                on:change={(e) => handleFullscreenChange('enableFullscreenHelper', e.detail)}
+            />
+
+            {#if config.fullscreenConfig.enableFullscreenHelper}
+                <div class="fn__hr"></div>
+
+                <SettingItem 
+                    type="select" 
+                    title={plugin.i18n.buttonPosition || '按钮位置'} 
+                    description=""
+                    value={config.fullscreenConfig.buttonPosition}
+                    options={{'top-left': plugin.i18n.buttonPositionTopLeft || '左上角', 'top-right': plugin.i18n.buttonPositionTopRight || '右上角'}}
+                    on:change={(e) => handleFullscreenChange('buttonPosition', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableDoubleClick || '双击进入全屏'} 
+                    description={plugin.i18n.enableDoubleClickDesc || '双击图表区域快速进入全屏模式'}
+                    value={config.fullscreenConfig.enableDoubleClick}
+                    on:change={(e) => handleFullscreenChange('enableDoubleClick', e.detail)}
+                />
+
+                <div class="b3-label__text" style="margin: 20px 0 10px;">{plugin.i18n.supportedTypes || '支持的类型'}</div>
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableMermaid || 'Mermaid 流程图'} 
+                    description=""
+                    value={config.fullscreenConfig.enableMermaid}
+                    on:change={(e) => handleFullscreenChange('enableMermaid', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableECharts || 'ECharts 图表'} 
+                    description=""
+                    value={config.fullscreenConfig.enableECharts}
+                    on:change={(e) => handleFullscreenChange('enableECharts', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableFlowchart || 'Flowchart 流程图'} 
+                    description=""
+                    value={config.fullscreenConfig.enableFlowchart}
+                    on:change={(e) => handleFullscreenChange('enableFlowchart', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableGraphviz || 'Graphviz 关系图'} 
+                    description=""
+                    value={config.fullscreenConfig.enableGraphviz}
+                    on:change={(e) => handleFullscreenChange('enableGraphviz', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableSheetMusic || '五线谱 (abcjs)'} 
+                    description=""
+                    value={config.fullscreenConfig.enableSheetMusic}
+                    on:change={(e) => handleFullscreenChange('enableSheetMusic', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableIFrame || 'IFrame 内嵌网页'} 
+                    description=""
+                    value={config.fullscreenConfig.enableIFrame}
+                    on:change={(e) => handleFullscreenChange('enableIFrame', e.detail)}
+                />
+            {/if}
         {/if}
 
         {#if activeTab === 'style'}

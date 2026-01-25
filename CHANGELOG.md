@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.15] - 2026-01-26
+### Added
+- **Fullscreen Helper**: Integrated the "Fullscreen Helper" plugin functionality directly into Floating TOC.
+  - Added a new "Fullscreen Helper" tab in settings.
+  - Supports immersive fullscreen viewing for Mermaid, ECharts, Flowchart, Graphviz, Sheet Music (abcjs), and IFrames.
+  - Added pan and zoom capabilities for static charts (Mermaid, Graphviz, etc.) in fullscreen mode.
+  - Supports double-click to enter fullscreen (configurable).
+  - Added support for adaptive background colors in fullscreen mode.
+  - Added a **Master Switch** for Fullscreen Helper in settings, allowing users to enable/disable the entire module with one click.
+
+### Fixed
+- **IFrame Scrolling**: Fixed an issue where some embedded IFrame pages (e.g., Bilibili) were forced to disable scrolling. The plugin now automatically restores scrolling capability in both normal and fullscreen modes.
+
 ## [0.1.14] - 2026-01-25
 
 ### Fixed

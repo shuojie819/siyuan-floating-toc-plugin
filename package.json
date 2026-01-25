@@ -1,6 +1,6 @@
 {
   "name": "siyuan-floating-toc-plugin",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "type": "module",
   "description": "Floating Table of Contents for SiYuan Note",
   "scripts": {
@@ -10,6 +10,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
     "@tsconfig/svelte": "^5.0.0",
+    "sass": "^1.97.3",
     "siyuan": "latest",
     "svelte": "^4.0.0",
     "svelte-preprocess": "^5.0.0",

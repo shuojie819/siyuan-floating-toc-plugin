@@ -1,0 +1,155 @@
+.fullscreen-helper-btn-container {
+    position: absolute;
+    top: 6px; /* Adjust to match SiYuan's protyle-icons */
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    pointer-events: none; /* Let clicks pass through when invisible */
+
+    &.right {
+        /* Default position, will be overridden by JS if needed */
+        right: 48px;
+    }
+    
+    &.left {
+        left: 6px;
+    }
+}
+
+/* Show on hover */
+.render-node:hover .fullscreen-helper-btn-container {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.fullscreen-helper-btn {
+    width: 22px;
+    height: 22px;
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface-light);
+    background-color: var(--b3-theme-background-light); /* Optional: add background for better visibility */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.1s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+
+    &:hover {
+        background-color: var(--b3-theme-background-hover);
+        color: var(--b3-theme-on-surface);
+    }
+
+    svg {
+        width: 14px;
+        height: 14px;
+        fill: currentColor;
+    }
+}
+
+/* Fullscreen Overlay */
+.fullscreen-helper-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    background-color: var(--b3-theme-background); /* Default to theme background */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    &[data-bg="dark"] {
+        background-color: #1e1e1e;
+        color: #eee;
+    }
+    &[data-bg="light"] {
+        background-color: #fefefe;
+        color: #333;
+    }
+    &[data-bg="transparent"] {
+        background-color: rgba(0, 0, 0, 0.8);
+        color: #eee;
+    }
+}
+
+.fullscreen-helper-toolbar {
+    position: absolute;
+    top: 20px;
+    display: flex;
+    gap: 16px;
+    padding: 8px 16px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 20px;
+    align-items: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+.fullscreen-helper-bg-toggle {
+    display: flex;
+    gap: 8px;
+    
+    .bg-option {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        box-sizing: border-box;
+        
+        &.dark { background-color: #333; }
+        &.light { background-color: #eee; }
+        &.transparent { 
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 8px 8px;
+            background-color: white;
+        }
+        
+        &:hover {
+            transform: scale(1.1);
+            border-color: rgba(255, 255, 255, 0.8);
+        }
+    }
+}
+
+.fullscreen-helper-close {
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    color: white;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    
+    svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+    }
+}
+
+.fullscreen-helper-content {
+    width: 100%;
+    height: 100%;
+    padding: 60px 20px 20px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    
+    img, svg, canvas {
+        max-width: 95%;
+        max-height: 95%;
+        object-fit: contain;
+    }
+}

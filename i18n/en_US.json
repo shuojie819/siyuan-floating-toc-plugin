@@ -23,5 +23,20 @@
   "style": "Style",
   "customCss": "Custom CSS",
   "customCssDesc": "Enter custom CSS here to override default styles.<br>E.g.: .siyuan-floating-toc-plugin-container .toc-panel { background: red !important; }",
-  "customCssPlaceholder": "Please enter here, your input will be automatically saved"
+  "customCssPlaceholder": "Please enter here, your input will be automatically saved",
+  "fullscreen": "Fullscreen",
+  "settingsTitle": "Fullscreen Helper Settings",
+  "fullscreenSettingsDesc": "Enable or disable fullscreen viewing for various chart types",
+  "buttonPosition": "Button Position",
+  "buttonPositionTopRight": "Top Right",
+  "buttonPositionTopLeft": "Top Left",
+  "enableDoubleClick": "Double-click to Enter Fullscreen",
+  "enableDoubleClickDesc": "Double-click the chart area to quickly enter fullscreen mode",
+  "supportedTypes": "Supported Types",
+  "enableMermaid": "Mermaid Flowchart",
+  "enableECharts": "ECharts Chart",
+  "enableFlowchart": "Flowchart",
+  "enableGraphviz": "Graphviz",
+  "enableSheetMusic": "Sheet Music (abcjs)",
+  "enableIFrame": "IFrame / Embedded Webpage"
 }
