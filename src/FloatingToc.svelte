@@ -136,19 +136,44 @@
 
       pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
       
-       if (isPinned && paddingNeeded) {
-           const extra = (dockSide === 'left') ? 42 : 0;
-           updateEditorPadding(targetElement, effectiveTocWidth + extra);
-       } else if (dockSide === 'left') {
-           // For left dock (both collapsed AND expanded), always apply minimal padding 
-           // to maintain consistent layout and keep block markers accessible.
-           // Use miniTocWidth + 10 as safe margin for collapsed state, but here we cover both.
-           // If collapsed, width is miniTocWidth.
-          const width = isPinned ? effectiveTocWidth : miniTocWidth;
-          updateEditorPadding(targetElement, width + 10); // width + 10px (gap)
-       } else {
+      // Check for Full Width mode (Adaptive Disabled)
+      // Priority: 1. Document attribute (custom-sy-fullwidth) 2. Global config
+      let isFullWidth = false;
+      const fullWidthAttr = wysiwyg.getAttribute("custom-sy-fullwidth");
+      if (fullWidthAttr) {
+          isFullWidth = fullWidthAttr === "true";
+      } else {
+          isFullWidth = (window as any).siyuan?.config?.editor?.fullWidth;
+      }
+
+      // Logic:
+      // If Full Width (isFullWidth = true): Content fills screen. We NEED to push content (add padding) to avoid overlap.
+      // If Narrow/Adaptive (isFullWidth = false): Content is centered with large margins. We DO NOT need to push content; TOC floats in the margin.
+      
+      if (!isFullWidth) {
+           // Narrow Mode: Do not push content (use margins)
            updateEditorPadding(targetElement, 0);
-       }
+      } else if (isExpanded && wysiwyg) {
+           // Full Width Mode: Calculate and apply padding
+           // Re-evaluate paddingNeeded based on overlap in Full Width context
+           // (The previous generic logic inside 'if (isExpanded)' sets paddingNeeded)
+           
+           if (isPinned && paddingNeeded) {
+               const extra = (dockSide === 'left') ? 42 : 0;
+               updateEditorPadding(targetElement, effectiveTocWidth + extra);
+           } else if (dockSide === 'left') {
+               const width = isPinned ? effectiveTocWidth : miniTocWidth;
+               updateEditorPadding(targetElement, width + 10);
+           } else {
+               updateEditorPadding(targetElement, 0);
+           }
+      } else if (dockSide === 'left') {
+          // Fallback for left dock collapsed state
+          const width = isPinned ? effectiveTocWidth : miniTocWidth;
+          updateEditorPadding(targetElement, width + 10);
+      } else {
+           updateEditorPadding(targetElement, 0);
+      }
   };
     
    const updateEditorPadding = (protyleElement: HTMLElement, offset: number) => {
@@ -170,6 +195,26 @@
            appliedPadding = false;
        }
    };
+
+  // Observe attribute changes on wysiwyg element for Full Width toggle
+  let attrObserver: MutationObserver | null = null;
+
+  const startAttrObserver = () => {
+      if (attrObserver) attrObserver.disconnect();
+      if (!targetElement) return;
+      
+      const wysiwyg = targetElement.querySelector('.protyle-wysiwyg');
+      if (wysiwyg) {
+          attrObserver = new MutationObserver((mutations) => {
+              for (const mutation of mutations) {
+                  if (mutation.type === 'attributes' && mutation.attributeName === 'custom-sy-fullwidth') {
+                      updatePosition();
+                  }
+              }
+          });
+          attrObserver.observe(wysiwyg, { attributes: true, attributeFilter: ['custom-sy-fullwidth'] });
+      }
+  };
 
   // Resize Handlers
   const onResizeStart = (e: MouseEvent) => {
@@ -234,6 +279,7 @@
       
       window.addEventListener('resize', updatePosition);
       onScroll();
+      startAttrObserver(); // Start observing wysiwyg attributes
       updatePosition();
   });
   
@@ -241,6 +287,7 @@
       window.removeEventListener('resize', updatePosition);
       removeGlobalCheck();
       if (resizeObserver) resizeObserver.disconnect();
+      if (attrObserver) attrObserver.disconnect();
       
       if (targetElement && appliedPadding) {
           const content = targetElement.querySelector('.protyle-content');

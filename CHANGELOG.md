@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.16] - 2026-01-26
+
+### Fixed
+- **Adaptive Width Compatibility**: Completely refactored the layout detection logic to correctly handle SiYuan's "Full Width" vs "Adaptive Width" modes.
+  - **Full Width Mode**: When enabled (either globally or via document menu), the TOC now correctly adds padding to push the document content, preventing overlap.
+  - **Adaptive Width Mode**: When enabled (Narrow Mode), the TOC floats in the margin without adding unnecessary padding.
+  - **Real-time Detection**: Added a `MutationObserver` to instantly detect and react to layout mode changes toggled via the document menu.
+
+### Changed
+- **Default Settings**: "Adaptive Height" is now enabled by default for a better out-of-the-box experience.
+
 ## [0.1.15] - 2026-01-26
 ### Added
 - **Fullscreen Helper**: Integrated the "Fullscreen Helper" plugin functionality directly into Floating TOC.
@@ -14,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **IFrame Scrolling**: Fixed an issue where some embedded IFrame pages (e.g., Bilibili) were forced to disable scrolling. The plugin now automatically restores scrolling capability in both normal and fullscreen modes.
+- **Full Width Compatibility**: Fixed an issue where the TOC would squeeze the document content when SiYuan's "Full Width" mode (Adaptive Disabled) was active. Now, in Full Width mode, the TOC will float over the content without adding extra padding, preserving the user's layout preference.
 
 ## [0.1.14] - 2026-01-25
 

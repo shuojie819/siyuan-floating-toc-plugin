@@ -33,13 +33,13 @@ export default class FloatingTocPlugin extends Plugin {
         // Load config
         await this.loadData("config.json");
         if (!this.data["config.json"]) {
-            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true, miniTocWidth: 32, adaptiveHeight: false };
+            this.data["config.json"] = { dockSide: "right", isPinned: false, tocWidth: 250, followFocus: true, miniTocWidth: 32, adaptiveHeight: true };
         }
         if (typeof this.data["config.json"].followFocus === "undefined") {
             this.data["config.json"].followFocus = true;
         }
         if (typeof this.data["config.json"].adaptiveHeight === "undefined") {
-            this.data["config.json"].adaptiveHeight = false;
+            this.data["config.json"].adaptiveHeight = true;
         }
         if (typeof this.data["config.json"].miniTocWidth === "undefined") {
             this.data["config.json"].miniTocWidth = 32;

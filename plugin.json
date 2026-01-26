@@ -2,8 +2,8 @@
   "name": "siyuan-floating-toc-plugin",
   "author": "ShuoJie",
   "url": "https://github.com/shuojie819/siyuan-floating-toc-plugin",
-  "version": "0.1.15",
-  "minAppVersion": "2.10.0",
+  "version": "0.1.16",
+  "minAppVersion": "3.1.0",
   "description": {
     "default": "Floating Table of Contents for SiYuan Note",
     "zh_CN": "思源笔记悬浮大纲插件"
