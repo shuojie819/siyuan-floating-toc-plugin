@@ -168,6 +168,52 @@ function isHeadingOperation(operation: any): boolean {
 }
 
 /**
+ * 获取文档内容并滚动到指定块
+ * 用于处理长文档的动态加载跳转
+ * @param blockId 目标块 ID
+ * @param rootId 文档根 ID（可选）
+ */
+export async function getDocWithScroll(
+    blockId: string,
+    rootId?: string
+): Promise<{ success: boolean; content?: string }> {
+    const result = await fetchPost("/api/filetree/getDoc", {
+        id: blockId,
+        mode: 0,  // 正常模式
+        size: 102400,
+        // action 参数：cb-get-outline 用于大纲跳转，cb-get-hl 用于高亮
+        // 这会触发 protyle 加载目标块周围的内容
+    });
+    
+    if (result.code === 0 && result.data) {
+        return {
+            success: true,
+            content: result.data.content
+        };
+    }
+    
+    return { success: false };
+}
+
+/**
+ * 检查块是否存在
+ * @param id 块 ID
+ */
+export async function checkBlockExist(id: string): Promise<boolean> {
+    const result = await fetchPost("/api/block/checkBlockExist", { id });
+    return result.code === 0 && result.data === true;
+}
+
+/**
+ * 检查块是否已折叠
+ * @param id 块 ID
+ */
+export async function checkBlockFold(id: string): Promise<boolean> {
+    const result = await fetchPost("/api/block/checkBlockFold", { id });
+    return result.code === 0 && result.data === true;
+}
+
+/**
  * 扁平化大纲数据
  * 将树形结构转换为扁平数组
  */
