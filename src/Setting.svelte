@@ -1,15 +1,18 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import SettingItem from './components/SettingItem.svelte';
+    import type { PluginConfig, ToolbarAction, FullscreenConfig } from './types';
 
     export let plugin: any;
     
-    // Default settings
-    let config = {
+    // 默认配置
+    const DEFAULT_CONFIG: PluginConfig = {
         dockSide: "right",
+        isPinned: false,
+        tocWidth: 250,
         followFocus: true,
-        adaptiveHeight: false,
         miniTocWidth: 32,
+        adaptiveHeight: false,
         toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
         customCss: "",
         fullscreenConfig: {
@@ -24,18 +27,20 @@
             buttonPosition: "top-left"
         }
     };
+    
+    let config: PluginConfig = { ...DEFAULT_CONFIG };
 
     let activeTab = 'outline';
     
     $: tabs = [
-        { id: 'outline', label: '大纲功能' }, // Outline Functions
-        { id: 'toolbar', label: '功能区功能' }, // Toolbar Functions
-        { id: 'fullscreen', label: '全屏辅助' }, // Fullscreen Helper
+        { id: 'outline', label: '大纲功能' },
+        { id: 'toolbar', label: '功能区功能' },
+        { id: 'fullscreen', label: '全屏辅助' },
         { id: 'style', label: plugin.i18n.style || '样式' }
     ];
 
-    // Toolbar actions definition
-    const toolbarActions = [
+    // 工具栏操作定义
+    const toolbarActions: Array<{ id: ToolbarAction }> = [
         { id: "scrollToTop" },
         { id: "scrollToBottom" },
         { id: "refreshDoc" },
@@ -50,8 +55,17 @@
     });
 
     async function loadConfig() {
-        if (plugin.data && plugin.data["config.json"]) {
-            config = { ...config, ...plugin.data["config.json"] };
+        if (plugin.data?.["config.json"]) {
+            // 深度合并配置
+            const saved = plugin.data["config.json"];
+            config = {
+                ...DEFAULT_CONFIG,
+                ...saved,
+                fullscreenConfig: {
+                    ...DEFAULT_CONFIG.fullscreenConfig,
+                    ...(saved.fullscreenConfig || {})
+                }
+            };
         }
     }
 
@@ -59,45 +73,37 @@
         plugin.data["config.json"] = config;
         await plugin.saveData("config.json", config);
         
-        // Apply custom CSS
+        // 应用自定义 CSS
         if (typeof plugin.applyCustomCss === 'function') {
             plugin.applyCustomCss(config.customCss);
         }
         
-        // Notify instances to update
-        plugin.tocInstances.forEach((toc) => {
-             // Update props
-             toc.$set({ 
-                 dockSide: config.dockSide,
-                 followFocus: config.followFocus,
-                 adaptiveHeight: config.adaptiveHeight,
-                 miniTocWidth: config.miniTocWidth,
-                 toolbarConfig: config.toolbarConfig
-             });
-             
-             // Special handling for followFocus
-             // We force update headings if followFocus changed, or just in general to be safe
-             // In the original code, it specifically re-fetched docId and called updateHeadings
-             if (config.followFocus) {
-                 const protyleElement = toc.targetElement;
-                 if (protyleElement) {
-                     // We need to access the method on plugin to get Doc ID
-                     // Since `plugin` is passed as any, we assume it has the method
-                     const docId = plugin.getDocIdFromProtyleElement(protyleElement);
-                     if (docId) {
-                         toc.updateHeadings(docId, protyleElement.protyle);
-                     }
-                 }
-             }
+        // 通知所有 TOC 实例更新
+        plugin.tocInstances?.forEach((toc: any) => {
+            toc.$set({ 
+                dockSide: config.dockSide,
+                followFocus: config.followFocus,
+                adaptiveHeight: config.adaptiveHeight,
+                miniTocWidth: config.miniTocWidth,
+                toolbarConfig: config.toolbarConfig
+            });
+            
+            // 跟随聚焦设置变更时刷新大纲
+            if (config.followFocus && toc.targetElement) {
+                const docId = plugin.getDocIdFromProtyleElement?.(toc.targetElement);
+                if (docId) {
+                    toc.updateHeadings(docId, toc.targetElement.protyle);
+                }
+            }
         });
     }
 
-    function handleSettingChange(key, value) {
+    function handleSettingChange<K extends keyof PluginConfig>(key: K, value: PluginConfig[K]) {
         config[key] = value;
         saveConfig();
     }
 
-    function handleToolbarChange(actionId, checked) {
+    function handleToolbarChange(actionId: ToolbarAction, checked: boolean) {
         let newConfig = [...config.toolbarConfig];
         if (checked) {
             if (!newConfig.includes(actionId)) {
@@ -107,7 +113,7 @@
             newConfig = newConfig.filter(id => id !== actionId);
         }
         
-        // Sort
+        // 按定义顺序排序
         newConfig.sort((a, b) => {
             const indexA = toolbarActions.findIndex(item => item.id === a);
             const indexB = toolbarActions.findIndex(item => item.id === b);
@@ -117,7 +123,8 @@
         config.toolbarConfig = newConfig;
         saveConfig();
     }
-    function handleFullscreenChange(key, value) {
+    
+    function handleFullscreenChange<K extends keyof FullscreenConfig>(key: K, value: FullscreenConfig[K]) {
         config.fullscreenConfig[key] = value;
         saveConfig();
         if (typeof plugin.updateFullscreenHelperConfig === 'function') {

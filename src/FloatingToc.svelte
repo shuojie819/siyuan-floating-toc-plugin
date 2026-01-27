@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate } from "svelte";
+  import { getDocOutline, flattenOutline } from "./api";
+  import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
   // This is the DOM element of the protyle instance this TOC belongs to
@@ -10,18 +12,10 @@
   export let miniTocWidth: number = 32;
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
 
-  type Heading = {
-      id: string;
-      content: string;
-      depth: number;
-      subType?: string;
-      element?: HTMLElement | null;
-  };
-
   let headings: Heading[] = [];
   let focusedIds: Set<string> = new Set();
   let visible = true;
-  let currentProtyle: any = null;
+  let currentProtyle: IProtyle | null = null;
 
   export const toggle = () => {
       visible = !visible;
@@ -55,6 +49,55 @@
   // Derived state
   $: isExpanded = isPinned || isHovering || isResizing;
 
+  // 获取有效的 TOC 宽度（考虑移动端适配）
+  const getEffectiveTocWidth = () => window.innerWidth <= 768 ? 200 : tocWidth;
+
+  // 检查是否为全宽模式
+  const checkFullWidthMode = (wysiwyg: Element | null): boolean => {
+      if (!wysiwyg) return false;
+      const fullWidthAttr = wysiwyg.getAttribute("custom-sy-fullwidth");
+      if (fullWidthAttr) return fullWidthAttr === "true";
+      return !!(window as any).siyuan?.config?.editor?.fullWidth;
+  };
+
+  // 计算 TOC 位置
+  const calculateTocPosition = (
+      rect: DOMRect, 
+      wRect: DOMRect | null, 
+      effectiveTocWidth: number,
+      currentPaddingLeft: number,
+      currentPaddingRight: number
+  ): { left: number; paddingNeeded: boolean } => {
+      const resizeHandleOffset = 6;
+      
+      if (isExpanded && wRect) {
+          if (dockSide === 'left') {
+              const naturalTextLeft = wRect.left - (currentPaddingLeft / 2);
+              const idealLeft = naturalTextLeft - effectiveTocWidth;
+              const minLeft = rect.left + resizeHandleOffset;
+              const left = Math.max(minLeft, idealLeft);
+              const paddingNeeded = isPinned || (left + effectiveTocWidth > naturalTextLeft - 42);
+              return { left, paddingNeeded };
+          } else {
+              const naturalTextRight = wRect.right + (currentPaddingRight / 2);
+              const idealLeft = naturalTextRight;
+              const maxLeft = rect.right - effectiveTocWidth - resizeHandleOffset;
+              const left = Math.min(maxLeft, idealLeft);
+              const paddingNeeded = left < naturalTextRight;
+              return { left, paddingNeeded };
+          }
+      } else {
+          if (dockSide === 'left') {
+              return { left: rect.left + resizeHandleOffset, paddingNeeded: true };
+          } else {
+              return { 
+                  left: rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - resizeHandleOffset, 
+                  paddingNeeded: false 
+              };
+          }
+      }
+  };
+
   const updatePosition = () => {
       if (!targetElement || !document.contains(targetElement)) return;
       
@@ -63,116 +106,44 @@
       
       const wysiwyg = targetElement.querySelector('.protyle-wysiwyg');
       const rect = content.getBoundingClientRect();
+      const wRect = wysiwyg?.getBoundingClientRect() || null;
 
-      const top = Math.max(rect.top, 80); // Ensure minimal top margin
-      const maxHeight = Math.min(rect.height, window.innerHeight - top - 20); // Adjust height
-      let left = 0;
+      const top = Math.max(rect.top, 80);
+      const maxHeight = Math.min(rect.height, window.innerHeight - top - 20);
+      const effectiveTocWidth = getEffectiveTocWidth();
       
-      const resizeHandleOffset = 6; 
-      let paddingNeeded = false;
-
-      // Mobile adaptation: Force 200px width on small screens to match previous CSS logic
-      // and ensure calculations are consistent with rendering.
-      let effectiveTocWidth = tocWidth;
-      if (window.innerWidth <= 768) {
-          effectiveTocWidth = 200;
-      }
-
-      if (isExpanded && wysiwyg) {
-           const wRect = wysiwyg.getBoundingClientRect();
-           const currentPaddingLeft = parseFloat(content.style.paddingLeft) || 0;
-           const currentPaddingRight = parseFloat(content.style.paddingRight) || 0;
-           
-           const gap = 0; 
-           
-           if (dockSide === 'left') {
-               const naturalTextLeft = wRect.left - (currentPaddingLeft / 2);
-               const idealLeft = naturalTextLeft - effectiveTocWidth - gap;
-               const minLeft = rect.left + resizeHandleOffset;
-               
-               left = Math.max(minLeft, idealLeft);
-               
-               // Check overlap with text OR marker area (approx 42px buffer)
-               // Also, if pinned, we prefer to ensure safety margin
-               if (isPinned || (left + effectiveTocWidth > naturalTextLeft - 42)) {
-                   paddingNeeded = true;
-               } else {
-                   paddingNeeded = false;
-               }
-               
-           } else {
-               const naturalTextRight = wRect.right + (currentPaddingRight / 2);
-               const idealLeft = naturalTextRight + gap;
-               const maxLeft = rect.right - effectiveTocWidth - resizeHandleOffset;
-               
-               left = Math.min(maxLeft, idealLeft);
-               
-               if (left < naturalTextRight) {
-                   paddingNeeded = true;
-               } else {
-                   paddingNeeded = false;
-               }
-           }
-           
-       } else {
-           if (dockSide === 'left') {
-               left = rect.left + resizeHandleOffset;
-               // Left dock always needs padding to avoid covering block markers
-               paddingNeeded = true;
-           } else {
-               left = rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - resizeHandleOffset;
-               paddingNeeded = false;
-           }
-       }
+      const currentPaddingLeft = parseFloat(content.style.paddingLeft) || 0;
+      const currentPaddingRight = parseFloat(content.style.paddingRight) || 0;
+      
+      const { left, paddingNeeded } = calculateTocPosition(
+          rect, wRect, effectiveTocWidth, currentPaddingLeft, currentPaddingRight
+      );
       
       const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
-      
-      // Handle adaptive height
-      // If adaptiveHeight is enabled, we use max-height and let height be auto.
-      // Otherwise, we force height to be the calculated available height.
       const heightStyle = adaptiveHeight 
           ? `max-height: ${maxHeight}px; height: auto;` 
           : `height: ${maxHeight}px;`;
 
       pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
       
-      // Check for Full Width mode (Adaptive Disabled)
-      // Priority: 1. Document attribute (custom-sy-fullwidth) 2. Global config
-      let isFullWidth = false;
-      const fullWidthAttr = wysiwyg.getAttribute("custom-sy-fullwidth");
-      if (fullWidthAttr) {
-          isFullWidth = fullWidthAttr === "true";
-      } else {
-          isFullWidth = (window as any).siyuan?.config?.editor?.fullWidth;
-      }
-
-      // Logic:
-      // If Full Width (isFullWidth = true): Content fills screen. We NEED to push content (add padding) to avoid overlap.
-      // If Narrow/Adaptive (isFullWidth = false): Content is centered with large margins. We DO NOT need to push content; TOC floats in the margin.
+      // 更新编辑器内边距
+      const isFullWidth = checkFullWidthMode(wysiwyg);
       
       if (!isFullWidth) {
-           // Narrow Mode: Do not push content (use margins)
-           updateEditorPadding(targetElement, 0);
+          updateEditorPadding(targetElement, 0);
       } else if (isExpanded && wysiwyg) {
-           // Full Width Mode: Calculate and apply padding
-           // Re-evaluate paddingNeeded based on overlap in Full Width context
-           // (The previous generic logic inside 'if (isExpanded)' sets paddingNeeded)
-           
-           if (isPinned && paddingNeeded) {
-               const extra = (dockSide === 'left') ? 42 : 0;
-               updateEditorPadding(targetElement, effectiveTocWidth + extra);
-           } else if (dockSide === 'left') {
-               const width = isPinned ? effectiveTocWidth : miniTocWidth;
-               updateEditorPadding(targetElement, width + 10);
-           } else {
-               updateEditorPadding(targetElement, 0);
-           }
+          if (isPinned && paddingNeeded) {
+              const extra = (dockSide === 'left') ? 42 : 0;
+              updateEditorPadding(targetElement, effectiveTocWidth + extra);
+          } else if (dockSide === 'left') {
+              updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
+          } else {
+              updateEditorPadding(targetElement, 0);
+          }
       } else if (dockSide === 'left') {
-          // Fallback for left dock collapsed state
-          const width = isPinned ? effectiveTocWidth : miniTocWidth;
-          updateEditorPadding(targetElement, width + 10);
+          updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
       } else {
-           updateEditorPadding(targetElement, 0);
+          updateEditorPadding(targetElement, 0);
       }
   };
     
@@ -297,8 +268,16 @@
           }
       }
       
-      if (oldContentElement) {
-          oldContentElement.removeEventListener("scroll", onScroll);
+      // 清理滚动监听器
+      if (currentScrollElement) {
+          currentScrollElement.removeEventListener("scroll", onScroll);
+          currentScrollElement = null;
+      }
+      
+      // 清理滚动定时器
+      if (scrollTimer) {
+          cancelAnimationFrame(scrollTimer);
+          scrollTimer = null;
       }
   });
 
@@ -664,7 +643,7 @@
       return list;
   };
 
-  export const updateHeadings = async (docId: string, protyle?: any) => {
+  export const updateHeadings = async (docId: string, protyle?: IProtyle | any) => {
     if (protyle) {
         currentProtyle = protyle;
     }
@@ -672,10 +651,11 @@
       currentDocId = docId;
     }
     
-    // Clear previous focused IDs
+    // 清除之前的聚焦 ID
     focusedIds.clear();
 
     try {
+      // 历史记录模式：从 DOM 解析
       if (isHistoryTarget() && targetElement) {
         const domHeadings = collectHeadingsFromDom(targetElement);
         headings = [];
@@ -684,134 +664,69 @@
         return;
       }
 
-      // Check for Focus Mode (Zoom In) via DOM
+      // 检测聚焦模式
       let isFocusMode = false;
       let hasDatabaseGroups = false;
 
       if (targetElement) {
           const exitFocusBtn = targetElement.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]');
           isFocusMode = !!(exitFocusBtn && !exitFocusBtn.classList.contains("fn__none"));
-          // Check for Database Groups
           hasDatabaseGroups = targetElement.querySelector('.av__group-title') !== null;
       }
 
       if (isFocusMode && targetElement) {
-          // If Follow Focus is enabled OR we are looking at a Database with groups
-          // User Request: Even if followFocus is false, if isDatabaseWithGroups is true, treat as followFocus = true.
           if (followFocus || hasDatabaseGroups) {
-              // console.log("Floating TOC: Focus Mode detected & Follow Focus is ON (or DB groups present). Using DOM parser.");
+              // 跟随聚焦：从 DOM 解析
               const domHeadings = collectHeadingsFromDom(targetElement);
               headings = [];
               await new Promise(resolve => setTimeout(resolve, 0));
               headings = domHeadings;
               return;
           } else {
-              // If Follow Focus is disabled, we want the FULL outline, but highlight focused items.
-              // 1. Get the focused headings from DOM to identify them
+              // 不跟随聚焦：获取完整大纲，但标记聚焦范围
               const domHeadings = collectHeadingsFromDom(targetElement);
               domHeadings.forEach(h => focusedIds.add(h.id));
               
-              // 2. We need the Document Root ID to fetch the full outline.
-              // In Focus Mode, docId passed to this function might be the focused block ID.
-              // We need to find the root ID.
+              // 获取文档根 ID
               let rootId = "";
-              if (currentProtyle && currentProtyle.block && currentProtyle.block.rootID) {
+              if (currentProtyle?.block?.rootID) {
                   rootId = currentProtyle.block.rootID;
               } else {
-                  // Fallback: try to get it from the first breadcrumb item
-                   const breadcrumb = targetElement.querySelector(".protyle-breadcrumb");
-                   if (breadcrumb) {
-                       const firstItem = breadcrumb.querySelector(".protyle-breadcrumb__item");
-                       if (firstItem) {
-                           rootId = firstItem.getAttribute("data-node-id") || "";
-                       }
-                   }
+                  const breadcrumb = targetElement.querySelector(".protyle-breadcrumb");
+                  const firstItem = breadcrumb?.querySelector(".protyle-breadcrumb__item");
+                  rootId = firstItem?.getAttribute("data-node-id") || "";
               }
 
-              // Use rootId if available, otherwise fallback to docId (which might be focused ID, but worth a try)
-              const fetchId = rootId || docId;
-              
-              // Proceed to fetch full outline below...
-              if (fetchId) {
-                  docId = fetchId;
+              if (rootId) {
+                  docId = rootId;
               }
           }
       }
 
       if (!docId) return;
 
-      const response = await fetch("/api/outline/getDocOutline", {
-        method: "POST",
-        body: JSON.stringify({ id: docId }),
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
+      // 使用封装的 API 获取大纲
+      const outlineData = await getDocOutline(docId);
       
-      if (!response.ok) {
-        throw new Error(`API request failed with status: ${response.status}`);
+      // 强制触发响应式更新
+      headings = [];
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      const apiHeadings = flattenOutline(outlineData, decoder);
+      
+      // API 返回空数组时的 fallback
+      if (apiHeadings.length === 0 && targetElement) {
+          const domHeadings = collectHeadingsFromDom(targetElement);
+          if (domHeadings.length > 0) {
+              headings = domHeadings;
+              return;
+          }
       }
       
-      const result = await response.json();
-      if (result.code === 0) {
-        // 强制更新大纲数据，无论当前 headings 是否相同
-        headings = [];
-        // 触发响应式更新
-        await new Promise(resolve => setTimeout(resolve, 0));
-        
-        const apiHeadings = flattenHeadings(result.data || []);
-        
-        // 如果 API 返回空数组，且当前处于聚焦模式 (docId 不是文档 ID)，尝试从 DOM 解析作为 Fallback
-        // 这通常发生在 API 不支持某些聚焦块，或者处于非常规的视图状态时
-        if (apiHeadings.length === 0 && targetElement) {
-             const domHeadings = collectHeadingsFromDom(targetElement);
-             if (domHeadings.length > 0) {
-                 // console.log("Floating TOC: API returned empty, falling back to DOM parser for focus mode");
-                 headings = domHeadings;
-                 return;
-             }
-        }
-        
-        // 设置新的大纲数据
-        headings = apiHeadings;
-      } else {
-        console.warn(`Failed to get outline: ${result.message || 'Unknown error'}`);
-      }
+      headings = apiHeadings;
     } catch (error) {
       console.error("Failed to update headings:", error);
     }
-  };
-
-  const flattenHeadings = (data: any[]) => {
-    const flat: any[] = [];
-    
-    const traverse = (items: any[], level: number) => {
-        if (!items) return;
-        items.forEach(item => {
-            let rawContent = item.content || item.name || "Untitled";
-            let content = getPlainText(rawContent);
-            
-            const children = item.children || item.blocks || [];
-            let depth = item.depth;
-            if (item.subType && item.subType.startsWith('h')) {
-                depth = parseInt(item.subType.substring(1));
-            } else if (item.subtype && item.subtype.startsWith('h')) {
-                 depth = parseInt(item.subtype.substring(1));
-            }
-
-            flat.push({
-                id: item.id,
-                content: content,
-                depth: depth || level,
-                subType: item.subType || item.subtype
-            });
-            
-            traverse(children, (depth || level) + 1);
-        });
-    };
-
-    traverse(data, 1);
-    return flat;
   };
 
   // 完全重写的标题跳转逻辑，严格模拟思源原生行为
@@ -1006,27 +921,34 @@
       });
   };
 
+  // 统一管理滚动监听器，避免重复添加和内存泄漏
+  let currentScrollElement: Element | null = null;
+  
+  const attachScrollListener = (element: Element | null) => {
+      if (element === currentScrollElement) return;
+      
+      // 移除旧的监听器
+      if (currentScrollElement) {
+          currentScrollElement.removeEventListener("scroll", onScroll);
+      }
+      
+      // 添加新的监听器
+      if (element) {
+          element.addEventListener("scroll", onScroll, { passive: true });
+      }
+      
+      currentScrollElement = element;
+  };
+
   $: if (targetElement) {
       const contentElement = targetElement.querySelector(".protyle-content");
-      if (contentElement) {
-          contentElement.addEventListener("scroll", onScroll, { passive: true });
-      }
+      attachScrollListener(contentElement);
   }
-
-  let oldContentElement: Element | null = null;
   
   afterUpdate(() => {
       if (targetElement) {
-          const newContentElement = targetElement.querySelector(".protyle-content");
-          if (newContentElement !== oldContentElement) {
-              if (oldContentElement) {
-                  oldContentElement.removeEventListener("scroll", onScroll);
-              }
-              if (newContentElement) {
-                  newContentElement.addEventListener("scroll", onScroll, { passive: true });
-                  oldContentElement = newContentElement;
-              }
-          }
+          const contentElement = targetElement.querySelector(".protyle-content");
+          attachScrollListener(contentElement);
       }
   });
 </script>

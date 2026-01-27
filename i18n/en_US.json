@@ -27,6 +27,8 @@
   "fullscreen": "Fullscreen",
   "settingsTitle": "Fullscreen Helper Settings",
   "fullscreenSettingsDesc": "Enable or disable fullscreen viewing for various chart types",
+  "enableFullscreenHelper": "Enable Fullscreen Helper",
+  "enableFullscreenHelperDesc": "Master switch: Enable or disable the fullscreen helper feature",
   "buttonPosition": "Button Position",
   "buttonPositionTopRight": "Top Right",
   "buttonPositionTopLeft": "Top Left",
@@ -38,5 +40,10 @@
   "enableFlowchart": "Flowchart",
   "enableGraphviz": "Graphviz",
   "enableSheetMusic": "Sheet Music (abcjs)",
-  "enableIFrame": "IFrame / Embedded Webpage"
+  "enableIFrame": "IFrame / Embedded Webpage",
+  "noHeadings": "No headings",
+  "zoomIn": "Zoom In",
+  "zoomOut": "Zoom Out",
+  "resetZoom": "Reset Zoom",
+  "close": "Close"
 }

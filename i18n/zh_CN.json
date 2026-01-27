@@ -27,6 +27,8 @@
   "fullscreen": "全屏",
   "settingsTitle": "全屏辅助设置",
   "fullscreenSettingsDesc": "开启或关闭各类图表的全屏查看功能",
+  "enableFullscreenHelper": "启用全屏辅助",
+  "enableFullscreenHelperDesc": "总开关：开启或关闭全屏辅助功能",
   "buttonPosition": "按钮位置",
   "buttonPositionTopRight": "右上角",
   "buttonPositionTopLeft": "左上角",
@@ -38,5 +40,10 @@
   "enableFlowchart": "Flowchart 流程图",
   "enableGraphviz": "Graphviz 关系图",
   "enableSheetMusic": "五线谱 (abcjs)",
-  "enableIFrame": "IFrame 内嵌网页"
+  "enableIFrame": "IFrame 内嵌网页",
+  "noHeadings": "暂无标题",
+  "zoomIn": "放大",
+  "zoomOut": "缩小",
+  "resetZoom": "重置缩放",
+  "close": "关闭"
 }

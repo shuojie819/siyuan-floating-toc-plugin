@@ -1,27 +1,55 @@
 import type { Plugin } from "siyuan";
+import type { FullscreenConfig } from "../types";
 
-export interface FullscreenHelperConfig {
-    enableFullscreenHelper: boolean;
-    enableMermaid: boolean;
-    enableECharts: boolean;
-    enableSheetMusic: boolean;
-    enableGraphviz: boolean;
-    enableFlowchart: boolean;
-    enableIFrame: boolean;
-    enableDoubleClick: boolean;
-    buttonPosition: "top-right" | "top-left";
+export type { FullscreenConfig as FullscreenHelperConfig };
+
+type ChartType = 'mermaid' | 'echarts' | 'sheetmusic' | 'graphviz' | 'flowchart' | 'iframe';
+
+interface RestoreInfo {
+    element: HTMLElement;
+    parent: HTMLElement;
+    nextSibling: Node | null;
+    placeholder: HTMLElement;
+    originalStyles: {
+        width: string;
+        height: string;
+        maxWidth: string;
+        maxHeight: string;
+        transform: string;
+        transformOrigin: string;
+    };
+    originalAttributes?: {
+        scrolling?: string | null;
+    };
+}
+
+interface PanZoomState {
+    scale: number;
+    translateX: number;
+    translateY: number;
+    isDragging: boolean;
+    startX: number;
+    startY: number;
 }
 
 export class FullscreenHelper {
     private plugin: Plugin;
     private mutationObserver: MutationObserver | null = null;
     private fullscreenContainer: HTMLElement | null = null;
-    private config: FullscreenHelperConfig;
-    // Map to store cleanup functions for each processed element to prevent memory leaks
+    private config: FullscreenConfig;
     private elementCleanups = new Map<HTMLElement, () => void>();
     private debounceTimer: number | null = null;
+    private restoreInfo: RestoreInfo | null = null;
+    private panZoomState: PanZoomState = {
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+        isDragging: false,
+        startX: 0,
+        startY: 0
+    };
 
-    constructor(plugin: Plugin, config?: Partial<FullscreenHelperConfig>) {
+    constructor(plugin: Plugin, config?: Partial<FullscreenConfig>) {
         this.plugin = plugin;
         this.config = {
             enableFullscreenHelper: true,
@@ -37,7 +65,7 @@ export class FullscreenHelper {
         };
     }
 
-    public updateConfig(config: Partial<FullscreenHelperConfig>) {
+    public updateConfig(config: Partial<FullscreenConfig>) {
         this.config = { ...this.config, ...config };
         
         // If disabled globally, clean up everything
@@ -309,7 +337,6 @@ export class FullscreenHelper {
     }
 
     private setupPortalButton(container: HTMLElement, type: string, extraCleanups: (() => void)[] = []) {
-        // Create a portal button that is appended to body on hover
         let portalBtn: HTMLElement | null = null;
         const cleanupFns: (() => void)[] = [...extraCleanups];
 
@@ -321,32 +348,17 @@ export class FullscreenHelper {
         };
 
         const showButton = () => {
-            if (portalBtn) return; // Already showing
+            if (portalBtn) return;
             
             portalBtn = document.createElement('div');
-            portalBtn.className = 'fullscreen-helper-btn b3-tooltips b3-tooltips__sw';
+            portalBtn.className = 'fullscreen-helper-portal-btn b3-tooltips b3-tooltips__sw';
             portalBtn.setAttribute('aria-label', (this.plugin.i18n.fullscreen || 'Fullscreen') + ' (Shift+Click Block)');
             portalBtn.innerHTML = `<svg><use xlink:href="#iconFullscreen"></use></svg>`;
             
-            // Style it to be fixed/absolute on top of the container
-            portalBtn.style.position = 'fixed';
-            portalBtn.style.zIndex = '1000';
-            portalBtn.style.width = '24px';
-            portalBtn.style.height = '24px';
-            portalBtn.style.cursor = 'pointer';
-            portalBtn.style.color = 'var(--b3-theme-on-surface)';
-            portalBtn.style.background = 'var(--b3-theme-surface)';
-            portalBtn.style.borderRadius = '4px';
-            portalBtn.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
-            portalBtn.style.display = 'flex';
-            portalBtn.style.alignItems = 'center';
-            portalBtn.style.justifyContent = 'center';
-            
-            // Calculate position
+            // 只保留位置相关的内联样式（因为需要动态计算）
             const rect = container.getBoundingClientRect();
-            // Position at top-right of the block
             portalBtn.style.top = `${rect.top + 8}px`;
-            portalBtn.style.left = `${rect.right - 32}px`; // 32px from right edge
+            portalBtn.style.left = `${rect.right - 32}px`;
 
             portalBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -355,31 +367,27 @@ export class FullscreenHelper {
                 removeButton();
             });
             
-            // If user scrolls, we should remove.
             window.addEventListener('scroll', removeButton, { once: true, capture: true });
-
             document.body.appendChild(portalBtn);
         };
 
         const onMouseEnter = () => showButton();
         const onMouseLeave = (e: MouseEvent) => {
-             // Check if moving to the button itself
-             if (e.relatedTarget === portalBtn || (portalBtn && portalBtn.contains(e.relatedTarget as Node))) {
-                 return;
-             }
-             removeButton();
+            if (e.relatedTarget === portalBtn || (portalBtn && portalBtn.contains(e.relatedTarget as Node))) {
+                return;
+            }
+            removeButton();
         };
 
         container.addEventListener('mouseenter', onMouseEnter);
         container.addEventListener('mouseleave', onMouseLeave);
 
-        // Shift + Click listener on container
         const onShiftClick = (e: MouseEvent) => {
-             if (e.shiftKey) {
-                 e.preventDefault();
-                 e.stopPropagation();
-                 this.enterFullscreen(container, type);
-             }
+            if (e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.enterFullscreen(container, type);
+            }
         };
         container.addEventListener('click', onShiftClick, true);
 
@@ -395,348 +403,211 @@ export class FullscreenHelper {
         });
     }
 
-    private restoreInfo: {
-        element: HTMLElement;
-        parent: HTMLElement;
-        nextSibling: Node | null;
-        placeholder: HTMLElement;
-        originalStyles: {
-            width: string;
-            height: string;
-            maxWidth: string;
-            maxHeight: string;
-            transform: string; // Restore transform
-            transformOrigin: string; // Restore transformOrigin
-        };
-        originalAttributes?: {
-            scrolling?: string | null;
-        };
-    } | null = null;
-
-    private panZoomState: {
-        scale: number;
-        translateX: number;
-        translateY: number;
-        isDragging: boolean;
-        startX: number;
-        startY: number;
-    } = {
-        scale: 1,
-        translateX: 0,
-        translateY: 0,
-        isDragging: false,
-        startX: 0,
-        startY: 0
-    };
-
     private enterFullscreen(sourceElement: HTMLElement, type: string) {
         this.fullscreenContainer = document.createElement('div');
         this.fullscreenContainer.className = 'fullscreen-helper-overlay';
-        this.fullscreenContainer.tabIndex = -1; // Make it focusable
+        this.fullscreenContainer.tabIndex = -1;
         
-        // Adaptive background: Try to get the background color from the source or its parents
-        let adaptiveBg = 'var(--b3-theme-background)';
-        try {
-             // Find a parent with a non-transparent background
-             let el: HTMLElement | null = sourceElement;
-             while (el && el !== document.body) {
-                 const style = window.getComputedStyle(el);
-                 const bg = style.backgroundColor;
-                 if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-                     adaptiveBg = bg;
-                     break;
-                 }
-                 el = el.parentElement;
-             }
-        } catch (e) {
-            console.warn("Failed to get adaptive background", e);
-        }
-        
-        // Set initial background
+        // 自适应背景色
+        const adaptiveBg = this.getAdaptiveBackground(sourceElement);
         this.fullscreenContainer.style.backgroundColor = adaptiveBg;
         this.fullscreenContainer.setAttribute('data-bg', 'adaptive');
 
-        // Toolbar (Auto-hiding Top-Center Pill)
-        const toolbar = document.createElement('div');
-        toolbar.className = 'fullscreen-helper-toolbar';
-        
-        // Initial Style: Hidden above top
-        toolbar.style.position = 'fixed';
-        toolbar.style.top = '-60px'; // Hidden
-        toolbar.style.left = '50%';
-        toolbar.style.transform = 'translateX(-50%)';
-        toolbar.style.zIndex = '10002'; // Very high
-        toolbar.style.display = 'flex';
-        toolbar.style.alignItems = 'center';
-        toolbar.style.gap = '12px';
-        toolbar.style.padding = '8px 16px';
-        toolbar.style.background = 'rgba(30, 30, 30, 0.85)'; // Dark semi-transparent pill
-        toolbar.style.backdropFilter = 'blur(10px)';
-        toolbar.style.borderRadius = '24px'; // Pill shape
-        toolbar.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
-        toolbar.style.transition = 'top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-        toolbar.style.pointerEvents = 'auto';
-
-        // Auto-hide Logic
-        let isHoveringToolbar = false;
-        toolbar.addEventListener('mouseenter', () => isHoveringToolbar = true);
-        toolbar.addEventListener('mouseleave', () => isHoveringToolbar = false);
-
-        this.fullscreenContainer.addEventListener('mousemove', (e) => {
-            if (e.clientY < 60 || isHoveringToolbar) {
-                toolbar.style.top = '20px'; // Show
-            } else {
-                toolbar.style.top = '-60px'; // Hide
-            }
-        });
-
-        // Zoom Controls (Only for SVG content)
-        if (type !== 'echarts' && type !== 'iframe') {
-            const zoomControls = document.createElement('div');
-            zoomControls.className = 'fullscreen-helper-zoom-controls';
-            zoomControls.style.display = 'flex';
-            zoomControls.style.gap = '8px';
-            
-            const createZoomBtn = (icon: string, action: () => void, title: string) => {
-                const btn = document.createElement('div');
-                btn.className = 'fullscreen-helper-btn';
-                btn.style.width = '32px'; // Standard size
-                btn.style.height = '32px';
-                btn.style.cursor = 'pointer';
-                btn.style.color = '#eee';
-                btn.title = title;
-                btn.innerHTML = `<svg style="width:16px;height:16px;"><use xlink:href="#${icon}"></use></svg>`;
-                btn.style.display = 'flex';
-                btn.style.alignItems = 'center';
-                btn.style.justifyContent = 'center';
-                btn.style.borderRadius = '50%';
-                btn.style.transition = 'background 0.2s';
-                
-                btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.1)';
-                btn.onmouseleave = () => btn.style.background = 'transparent';
-                btn.onclick = action;
-                return btn;
-            };
-
-            zoomControls.appendChild(createZoomBtn('iconAdd', () => this.handleZoom(0.1), 'Zoom In'));
-            zoomControls.appendChild(createZoomBtn('iconMin', () => this.handleZoom(-0.1), 'Zoom Out'));
-            zoomControls.appendChild(createZoomBtn('iconRefresh', () => this.resetZoom(), 'Reset Zoom'));
-            
-            // Separator
-            const sep = document.createElement('div');
-            sep.style.width = '1px';
-            sep.style.height = '20px';
-            sep.style.background = 'rgba(255,255,255,0.2)';
-            sep.style.margin = '0 4px';
-            zoomControls.appendChild(sep);
-
-            toolbar.appendChild(zoomControls);
-        }
-
-        // Close button
-        const closeBtn = document.createElement('div');
-        closeBtn.className = 'fullscreen-helper-close';
-        closeBtn.title = "Close (Esc)";
-        closeBtn.innerHTML = '<svg style="width:18px;height:18px;"><use xlink:href="#iconCloseRound"></use></svg>';
-        
-        // Style as standard button inside pill
-        closeBtn.style.width = '32px';
-        closeBtn.style.height = '32px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.color = '#fff';
-        closeBtn.style.display = 'flex';
-        closeBtn.style.alignItems = 'center';
-        closeBtn.style.justifyContent = 'center';
-        closeBtn.style.borderRadius = '50%';
-        closeBtn.style.transition = 'background 0.2s, transform 0.2s';
-        
-        closeBtn.onmouseenter = () => {
-            closeBtn.style.background = 'rgba(255, 59, 48, 0.8)'; // Red hover for close
-            closeBtn.style.transform = 'scale(1.1)';
-        };
-        closeBtn.onmouseleave = () => {
-            closeBtn.style.background = 'transparent';
-            closeBtn.style.transform = 'scale(1)';
-        };
-
-        closeBtn.onclick = () => this.exitFullscreen();
-        toolbar.appendChild(closeBtn);
-
+        // 创建工具栏
+        const toolbar = this.createToolbar(type);
         this.fullscreenContainer.appendChild(toolbar);
 
-        // Content
+        // 创建内容容器
         const contentContainer = document.createElement('div');
         contentContainer.className = 'fullscreen-helper-content';
-        // Ensure content container fills screen absolutely to avoid flex gaps
-        contentContainer.style.position = 'absolute';
-        // Leave a small gap at the top (5px) to allow mouseover events to trigger the toolbar
-        // This is crucial because IFrames swallow mouse events, making it impossible to trigger the toolbar if top is 0.
-        contentContainer.style.top = '5px'; 
-        contentContainer.style.left = '0';
-        contentContainer.style.width = '100vw';
-        contentContainer.style.height = 'calc(100vh - 5px)'; // Adjust height to fit
-        contentContainer.style.margin = '0';
-        contentContainer.style.padding = '0';
-        contentContainer.style.zIndex = '0'; // Behind toolbar
         
-        // Wrap content in protyle-wysiwyg and b3-typography to preserve styles
         const styleWrapper = document.createElement('div');
-        styleWrapper.className = 'protyle-wysiwyg b3-typography';
-        styleWrapper.style.width = '100%';
-        styleWrapper.style.height = '100%';
-        styleWrapper.style.display = 'flex';
-        styleWrapper.style.alignItems = 'center';
-        styleWrapper.style.justifyContent = 'center';
-        styleWrapper.style.overflow = 'hidden'; // Ensure zoomed content doesn't overflow container but is clipped
-        // Force zero padding to prevent gaps from protyle styles
-        styleWrapper.style.setProperty('padding', '0', 'important');
-        styleWrapper.style.setProperty('margin', '0', 'important');
+        styleWrapper.className = 'protyle-wysiwyg b3-typography fullscreen-helper-style-wrapper';
         
-        // Find the actual interactive element to move
-        let elementToMove: HTMLElement | null = null;
-        
-        if (type === 'mermaid') {
-             // For Mermaid, we usually want the SVG, but moving just SVG might break if scripts depend on container
-             // However, moving the whole render-node content might be too much.
-             // Mermaid usually renders an SVG with an ID.
-             const svgs = Array.from(sourceElement.querySelectorAll('svg'));
-             elementToMove = svgs.find(svg => svg.id && svg.id.startsWith('mermaid')) as HTMLElement;
-             if (!elementToMove) {
-                 // Fallback search
-                 elementToMove = svgs.find(svg => {
-                    const parent = svg.parentElement;
-                    if (parent?.classList.contains('protyle-icon') || 
-                        parent?.classList.contains('b3-tooltips') ||
-                        parent?.classList.contains('fullscreen-helper-btn')) {
-                        return false;
-                    }
-                    return true;
-                }) as HTMLElement || null;
-             }
-        } else if (type === 'echarts') {
-            // ECharts needs its container (the div with _echarts_instance_)
-            elementToMove = sourceElement.querySelector('div[_echarts_instance_]') as HTMLElement;
-        } else if (type === 'graphviz' || type === 'flowchart') {
-            // These types usually render as SVG or sometimes IMG (PlantUML)
-            const svgs = Array.from(sourceElement.querySelectorAll('svg'));
-            elementToMove = svgs.find(svg => {
-                const parent = svg.parentElement;
-                if (parent?.classList.contains('protyle-icon') || 
-                    parent?.classList.contains('b3-tooltips') ||
-                    parent?.classList.contains('fullscreen-helper-btn')) {
-                    return false;
-                }
-                return true;
-            }) as HTMLElement || null;
-
-            if (!elementToMove) {
-                // Try to find an image if SVG not found (common for PlantUML sometimes)
-                elementToMove = sourceElement.querySelector('img');
-            }
-        } else if (type === 'iframe') {
-             elementToMove = sourceElement.querySelector('iframe') as HTMLElement;
-        } else {
-            // Sheet music
-             const svgs = Array.from(sourceElement.querySelectorAll('svg'));
-             elementToMove = svgs.find(svg => {
-                    const parent = svg.parentElement;
-                    if (parent?.classList.contains('protyle-icon') || 
-                        parent?.classList.contains('b3-tooltips') ||
-                        parent?.classList.contains('fullscreen-helper-btn')) {
-                        return false;
-                    }
-                    return true;
-                }) as HTMLElement || null;
-             
-             // If abcjs uses a container, try to find it
-             if (!elementToMove) {
-                 elementToMove = sourceElement.querySelector('.abcjs-container') as HTMLElement;
-             }
-        }
+        // 查找要移动的元素
+        const elementToMove = this.findElementToMove(sourceElement, type);
 
         if (elementToMove && elementToMove.parentElement) {
-            // Create placeholder
-            const placeholder = document.createElement('div');
-            placeholder.style.width = elementToMove.style.width || elementToMove.clientWidth + 'px';
-            placeholder.style.height = elementToMove.style.height || elementToMove.clientHeight + 'px';
-            placeholder.style.display = getComputedStyle(elementToMove).display;
-            
-            // Save restore info
-            this.restoreInfo = {
-                element: elementToMove,
-                parent: elementToMove.parentElement,
-                nextSibling: elementToMove.nextSibling,
-                placeholder: placeholder,
-                originalStyles: {
-                    width: elementToMove.style.width,
-                    height: elementToMove.style.height,
-                    maxWidth: elementToMove.style.maxWidth,
-                    maxHeight: elementToMove.style.maxHeight,
-                    transform: elementToMove.style.transform,
-                    transformOrigin: elementToMove.style.transformOrigin
-                }
-            };
-
-            // Insert placeholder
-            this.restoreInfo.parent.insertBefore(placeholder, elementToMove);
-            
-            // Move element
+            this.setupRestoreInfo(elementToMove, type);
             styleWrapper.appendChild(elementToMove);
+            this.applyFullscreenStyles(elementToMove, type);
             
-            // Apply fullscreen styles to element
-            if (type === 'iframe') {
-                elementToMove.style.width = '100%';
-                elementToMove.style.height = '100%';
-                elementToMove.style.maxWidth = '100%';
-                elementToMove.style.maxHeight = '100%';
-                elementToMove.style.border = 'none';
-                
-                // Fix: Force scrolling on IFrame in fullscreen mode
-                const originalScrolling = elementToMove.getAttribute('scrolling');
-                if (!this.restoreInfo.originalAttributes) {
-                    this.restoreInfo.originalAttributes = {};
-                }
-                this.restoreInfo.originalAttributes.scrolling = originalScrolling;
-                elementToMove.setAttribute('scrolling', 'auto');
-                elementToMove.style.overflow = 'auto'; // Ensure CSS overflow allows scrolling
-            } else {
-                elementToMove.style.width = 'auto';
-                elementToMove.style.height = 'auto';
-                elementToMove.style.maxWidth = '100%';
-                elementToMove.style.maxHeight = '100%';
-            }
-            
-            // If ECharts, we might need to trigger resize
             if (type === 'echarts') {
-                 // Give it a moment to render in new container then resize
-                 setTimeout(() => {
-                     // ECharts instance is attached to the dom element usually.
-                     // But we can just dispatch a window resize event which ECharts usually listens to
-                     window.dispatchEvent(new Event('resize'));
-                 }, 50);
-            } else if (type === 'iframe') {
-                // IFrame usually just needs width/height 100% which is set by styles
-                // No special resize needed usually
-            } else {
-                // Initialize Pan/Zoom for non-ECharts
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+            } else if (type !== 'iframe') {
                 this.resetZoomState();
                 this.setupPanZoom(elementToMove, styleWrapper);
             }
 
             contentContainer.appendChild(styleWrapper);
         } else {
-            contentContainer.innerText = "Content not found or not supported for interactive fullscreen.";
+            contentContainer.textContent = "Content not found or not supported for interactive fullscreen.";
             contentContainer.style.color = "var(--b3-theme-on-surface)";
         }
 
         this.fullscreenContainer.appendChild(contentContainer);
         document.body.appendChild(this.fullscreenContainer);
-        
-        // Set focus to container to catch ESC key immediately
         this.fullscreenContainer.focus();
 
-        // Close on Esc
         document.addEventListener('keydown', this.handleEsc);
+    }
+    
+    private getAdaptiveBackground(sourceElement: HTMLElement): string {
+        try {
+            let el: HTMLElement | null = sourceElement;
+            while (el && el !== document.body) {
+                const style = window.getComputedStyle(el);
+                const bg = style.backgroundColor;
+                if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+                    return bg;
+                }
+                el = el.parentElement;
+            }
+        } catch (e) {
+            console.warn("Failed to get adaptive background", e);
+        }
+        return 'var(--b3-theme-background)';
+    }
+    
+    private createToolbar(type: string): HTMLElement {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'fullscreen-helper-toolbar';
+        
+        let isHoveringToolbar = false;
+        toolbar.addEventListener('mouseenter', () => isHoveringToolbar = true);
+        toolbar.addEventListener('mouseleave', () => isHoveringToolbar = false);
+
+        // 工具栏自动隐藏逻辑
+        this.fullscreenContainer!.addEventListener('mousemove', (e) => {
+            toolbar.classList.toggle('visible', e.clientY < 60 || isHoveringToolbar);
+        });
+
+        // 缩放控件（非 ECharts 和 IFrame）
+        if (type !== 'echarts' && type !== 'iframe') {
+            const zoomControls = this.createZoomControls();
+            toolbar.appendChild(zoomControls);
+        }
+
+        // 关闭按钮
+        const closeBtn = this.createCloseButton();
+        toolbar.appendChild(closeBtn);
+
+        return toolbar;
+    }
+    
+    private createZoomControls(): HTMLElement {
+        const zoomControls = document.createElement('div');
+        zoomControls.className = 'fullscreen-helper-zoom-controls';
+        
+        const createBtn = (icon: string, action: () => void, title: string) => {
+            const btn = document.createElement('div');
+            btn.className = 'fullscreen-helper-zoom-btn';
+            btn.title = title;
+            btn.innerHTML = `<svg><use xlink:href="#${icon}"></use></svg>`;
+            btn.onclick = action;
+            return btn;
+        };
+
+        zoomControls.appendChild(createBtn('iconAdd', () => this.handleZoom(0.1), 'Zoom In'));
+        zoomControls.appendChild(createBtn('iconMin', () => this.handleZoom(-0.1), 'Zoom Out'));
+        zoomControls.appendChild(createBtn('iconRefresh', () => this.resetZoom(), 'Reset Zoom'));
+        
+        const sep = document.createElement('div');
+        sep.className = 'fullscreen-helper-separator';
+        zoomControls.appendChild(sep);
+
+        return zoomControls;
+    }
+    
+    private createCloseButton(): HTMLElement {
+        const closeBtn = document.createElement('div');
+        closeBtn.className = 'fullscreen-helper-close';
+        closeBtn.title = "Close (Esc)";
+        closeBtn.innerHTML = '<svg><use xlink:href="#iconCloseRound"></use></svg>';
+        closeBtn.onclick = () => this.exitFullscreen();
+        return closeBtn;
+    }
+    
+    private findElementToMove(sourceElement: HTMLElement, type: string): HTMLElement | null {
+        const findSvg = (filter?: (svg: SVGSVGElement) => boolean) => {
+            const svgs = Array.from(sourceElement.querySelectorAll('svg'));
+            return svgs.find(svg => {
+                const parent = svg.parentElement;
+                if (parent?.classList.contains('protyle-icon') || 
+                    parent?.classList.contains('b3-tooltips') ||
+                    parent?.classList.contains('fullscreen-helper-btn')) {
+                    return false;
+                }
+                return filter ? filter(svg) : true;
+            }) as HTMLElement || null;
+        };
+
+        switch (type) {
+            case 'mermaid':
+                const mermaidSvg = Array.from(sourceElement.querySelectorAll('svg'))
+                    .find(svg => svg.id?.startsWith('mermaid')) as HTMLElement;
+                return mermaidSvg || findSvg();
+            
+            case 'echarts':
+                return sourceElement.querySelector('div[_echarts_instance_]') as HTMLElement;
+            
+            case 'graphviz':
+            case 'flowchart':
+                return findSvg() || sourceElement.querySelector('img') as HTMLElement;
+            
+            case 'iframe':
+                return sourceElement.querySelector('iframe') as HTMLElement;
+            
+            default:
+                return findSvg() || sourceElement.querySelector('.abcjs-container') as HTMLElement;
+        }
+    }
+    
+    private setupRestoreInfo(element: HTMLElement, type: string) {
+        const placeholder = document.createElement('div');
+        placeholder.style.width = element.style.width || element.clientWidth + 'px';
+        placeholder.style.height = element.style.height || element.clientHeight + 'px';
+        placeholder.style.display = getComputedStyle(element).display;
+        
+        this.restoreInfo = {
+            element,
+            parent: element.parentElement!,
+            nextSibling: element.nextSibling,
+            placeholder,
+            originalStyles: {
+                width: element.style.width,
+                height: element.style.height,
+                maxWidth: element.style.maxWidth,
+                maxHeight: element.style.maxHeight,
+                transform: element.style.transform,
+                transformOrigin: element.style.transformOrigin
+            }
+        };
+
+        if (type === 'iframe') {
+            this.restoreInfo.originalAttributes = {
+                scrolling: element.getAttribute('scrolling')
+            };
+        }
+
+        this.restoreInfo.parent.insertBefore(placeholder, element);
+    }
+    
+    private applyFullscreenStyles(element: HTMLElement, type: string) {
+        if (type === 'iframe') {
+            element.style.width = '100%';
+            element.style.height = '100%';
+            element.style.maxWidth = '100%';
+            element.style.maxHeight = '100%';
+            element.style.border = 'none';
+            element.setAttribute('scrolling', 'auto');
+            element.style.overflow = 'auto';
+        } else {
+            element.style.width = 'auto';
+            element.style.height = 'auto';
+            element.style.maxWidth = '100%';
+            element.style.maxHeight = '100%';
+        }
     }
 
     private exitFullscreen() {

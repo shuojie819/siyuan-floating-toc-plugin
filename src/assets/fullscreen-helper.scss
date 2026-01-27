@@ -1,13 +1,12 @@
 .fullscreen-helper-btn-container {
     position: absolute;
-    top: 6px; /* Adjust to match SiYuan's protyle-icons */
+    top: 6px;
     z-index: 100;
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
-    pointer-events: none; /* Let clicks pass through when invisible */
+    pointer-events: none;
 
     &.right {
-        /* Default position, will be overridden by JS if needed */
         right: 48px;
     }
     
@@ -29,7 +28,7 @@
     border-radius: 4px;
     cursor: pointer;
     color: var(--b3-theme-on-surface-light);
-    background-color: var(--b3-theme-background-light); /* Optional: add background for better visibility */
+    background-color: var(--b3-theme-background-light);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -56,7 +55,7 @@
     width: 100%;
     height: 100%;
     z-index: 9999;
-    background-color: var(--b3-theme-background); /* Default to theme background */
+    background-color: var(--b3-theme-background);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -76,17 +75,139 @@
     }
 }
 
+/* Toolbar - Auto-hiding pill style */
 .fullscreen-helper-toolbar {
-    position: absolute;
-    top: 20px;
+    position: fixed;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10002;
     display: flex;
-    gap: 16px;
-    padding: 8px 16px;
-    background-color: rgba(0, 0, 0, 0.5);
-    border-radius: 20px;
     align-items: center;
-    z-index: 10000;
-    backdrop-filter: blur(4px);
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(30, 30, 30, 0.85);
+    backdrop-filter: blur(10px);
+    border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: auto;
+    
+    &.visible {
+        top: 20px;
+    }
+}
+
+/* Zoom controls */
+.fullscreen-helper-zoom-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.fullscreen-helper-zoom-btn {
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    color: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+    background: transparent;
+    
+    &:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+.fullscreen-helper-separator {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 4px;
+}
+
+.fullscreen-helper-close {
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s, transform 0.2s;
+    background: transparent;
+    
+    &:hover {
+        background: rgba(255, 59, 48, 0.8);
+        transform: scale(1.1);
+    }
+    
+    svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+    }
+}
+
+.fullscreen-helper-content {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 5px);
+    margin: 0;
+    padding: 0;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    
+    img, svg, canvas {
+        max-width: 95%;
+        max-height: 95%;
+        object-fit: contain;
+    }
+}
+
+.fullscreen-helper-style-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Portal button for IFrame */
+.fullscreen-helper-portal-btn {
+    position: fixed;
+    z-index: 1000;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface);
+    background: var(--b3-theme-surface);
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    svg {
+        width: 14px;
+        height: 14px;
+    }
 }
 
 .fullscreen-helper-bg-toggle {
@@ -113,43 +234,5 @@
             transform: scale(1.1);
             border-color: rgba(255, 255, 255, 0.8);
         }
-    }
-}
-
-.fullscreen-helper-close {
-    cursor: pointer;
-    width: 24px;
-    height: 24px;
-    color: white;
-    opacity: 0.8;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    &:hover {
-        opacity: 1;
-        transform: scale(1.1);
-    }
-    
-    svg {
-        width: 20px;
-        height: 20px;
-        fill: currentColor;
-    }
-}
-
-.fullscreen-helper-content {
-    width: 100%;
-    height: 100%;
-    padding: 60px 20px 20px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    
-    img, svg, canvas {
-        max-width: 95%;
-        max-height: 95%;
-        object-fit: contain;
     }
 }
