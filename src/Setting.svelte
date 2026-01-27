@@ -24,6 +24,7 @@
             enableFlowchart: true,
             enableIFrame: true,
             enableDoubleClick: true,
+            enableRightClickExit: true,
             buttonPosition: "top-left"
         }
     };
@@ -236,6 +237,14 @@
                     description={plugin.i18n.enableDoubleClickDesc || '双击图表区域快速进入全屏模式'}
                     value={config.fullscreenConfig.enableDoubleClick}
                     on:change={(e) => handleFullscreenChange('enableDoubleClick', e.detail)}
+                />
+
+                <SettingItem 
+                    type="checkbox" 
+                    title={plugin.i18n.enableRightClickExit || '右键退出全屏'} 
+                    description={plugin.i18n.enableRightClickExitDesc || '在全屏模式下点击鼠标右键退出全屏'}
+                    value={config.fullscreenConfig.enableRightClickExit}
+                    on:change={(e) => handleFullscreenChange('enableRightClickExit', e.detail)}
                 />
 
                 <div class="b3-label__text" style="margin: 20px 0 10px;">{plugin.i18n.supportedTypes || '支持的类型'}</div>

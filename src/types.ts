@@ -40,6 +40,7 @@ export interface FullscreenConfig {
     enableFlowchart: boolean;
     enableIFrame: boolean;
     enableDoubleClick: boolean;
+    enableRightClickExit: boolean;
     buttonPosition: 'top-right' | 'top-left';
 }
 
@@ -296,6 +297,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
         enableFlowchart: true,
         enableIFrame: true,
         enableDoubleClick: true,
+        enableRightClickExit: true,
         buttonPosition: "top-left"
     }
 };

@@ -60,6 +60,7 @@ export class FullscreenHelper {
             enableFlowchart: true,
             enableIFrame: true,
             enableDoubleClick: true,
+            enableRightClickExit: true,
             buttonPosition: "top-left",
             ...config
         };
@@ -450,6 +451,11 @@ export class FullscreenHelper {
         this.fullscreenContainer.focus();
 
         document.addEventListener('keydown', this.handleEsc);
+        
+        // 添加右键退出监听
+        if (this.config.enableRightClickExit) {
+            this.fullscreenContainer.addEventListener('contextmenu', this.handleRightClick);
+        }
     }
     
     private getAdaptiveBackground(sourceElement: HTMLElement): string {
@@ -673,6 +679,12 @@ export class FullscreenHelper {
         if (e.key === 'Escape') {
             this.exitFullscreen();
         }
+    }
+
+    private handleRightClick = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.exitFullscreen();
     }
 
     private setupPanZoom(element: HTMLElement, container: HTMLElement) {
