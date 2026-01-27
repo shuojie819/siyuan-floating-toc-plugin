@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate } from "svelte";
-  import { getDocOutline, flattenOutline, getDocWithScroll } from "./api";
+  import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -48,6 +48,18 @@
 
   // Derived state
   $: isExpanded = isPinned || isHovering || isResizing;
+
+  // 展开时立即同步滚动位置到当前活动标题（无动画）
+  $: if (isExpanded && activeHeadingId && container) {
+      // 使用 tick 确保 DOM 已更新
+      requestAnimationFrame(() => {
+          const activeTocItem = container?.querySelector(`.toc-item[data-id="${activeHeadingId}"]`);
+          if (activeTocItem) {
+              // 使用 scrollIntoView 但不带动画，实现即时定位
+              activeTocItem.scrollIntoView({ behavior: "instant", block: "center" });
+          }
+      });
+  }
 
   // 获取有效的 TOC 宽度（考虑移动端适配）
   const getEffectiveTocWidth = () => window.innerWidth <= 768 ? 200 : tocWidth;
@@ -556,6 +568,19 @@
       return false;
   };
 
+  // 检测是否为搜索预览模式
+  const isSearchTarget = () => {
+      if (!targetElement) return false;
+      if (targetElement.closest(".search__preview")) return true;
+      if (targetElement.closest(".b3-dialog--open[data-key='dialog-search']")) return true;
+      return false;
+  };
+
+  // 检测是否为特殊模式（历史记录、搜索等），这些模式下不应使用 API 跳转
+  const isSpecialMode = () => {
+      return isHistoryTarget() || isSearchTarget();
+  };
+
   const parseHeadingDepth = (el: HTMLElement, fallback: number) => {
       const tag = el.tagName ? el.tagName.toLowerCase() : "";
       if (/^h[1-6]$/.test(tag)) {
@@ -729,9 +754,117 @@
     }
   };
 
-  // 完全重写的标题跳转逻辑，支持长文档动态加载和聚焦模式
+  /**
+   * 使用思源官方 API 跳转到指定块
+   * 参考思源本体 Outline.ts 实现
+   */
+  const navigateToBlock = async (blockId: string) => {
+    // 使用 plugin.openTab 进行跳转，这是思源官方插件 API
+    // 会自动处理动态加载、聚焦模式等场景
+    if (plugin && typeof plugin.addTab === 'function') {
+      try {
+        await plugin.openTab({
+          app: plugin.app,
+          doc: {
+            id: blockId,
+            // 修复聚焦问题：移除 cb-get-focus 和 cb-get-all（会导致聚焦效果）
+            // 使用 cb-get-hl（高亮）+ cb-get-context（上下文）替代
+            action: ["cb-get-hl", "cb-get-context"],
+            zoomIn: false  // 明确禁用缩放/聚焦
+          }
+        });
+        return true;
+      } catch (e) {
+        console.warn("Floating TOC: openTab failed, falling back to protocol", e);
+      }
+    }
+    
+    // 回退方案：使用 siyuan 协议
+    window.open(`siyuan://blocks/${blockId}`, "_blank");
+    return true;
+  };
+
+  /**
+   * 在 DOM 中滚动到目标块并高亮
+   */
+  const scrollToBlockInDom = (targetBlock: Element) => {
+    const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
+    const contentElement = headingBlock.closest('.protyle-content');
+    
+    if (contentElement) {
+      headingBlock.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      
+      // 只对目标标题块应用高亮
+      if (headingBlock.hasAttribute('data-node-id')) {
+        const isTitleBlock = headingBlock.getAttribute('data-type') === 'NodeHeading';
+        if (isTitleBlock) {
+          headingBlock.classList.add('protyle-wysiwyg--hl');
+          setTimeout(() => {
+            headingBlock.classList.remove('protyle-wysiwyg--hl');
+          }, 1024);
+        }
+      }
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * 在 DOM 中查找目标块
+   */
+  const findTargetBlockInDom = (heading: Heading): Element | null => {
+    // 首先检查 heading.element 是否仍在 DOM 中
+    if (heading.element && document.contains(heading.element)) {
+      const el = heading.element as HTMLElement;
+      // 确保元素可见
+      if (el.offsetParent !== null && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        return el;
+      }
+    }
+
+    const searchRoot: ParentNode = targetElement || document;
+    const targetElements = searchRoot.querySelectorAll(
+      `[data-node-id="${heading.id}"], [data-id="${heading.id}"]`
+    );
+    
+    for (const element of Array.from(targetElements)) {
+      const el = element as HTMLElement;
+      
+      // 跳过嵌入块、不可见元素
+      if (el.closest('.protyle-embed') || 
+          el.offsetParent === null || 
+          el.offsetWidth === 0 || 
+          el.offsetHeight === 0) {
+        continue;
+      }
+      
+      // 优先选择标题类型元素
+      if (el.getAttribute('data-type') === 'NodeHeading') {
+        return el;
+      }
+      // 其次选择带有 data-node-id 的块元素
+      else if (el.hasAttribute('data-node-id')) {
+        return el;
+      }
+      // 支持数据库分组 (AV Groups)
+      else if (el.hasAttribute('data-id')) {
+        const groupTitle = el.closest('.av__group-title');
+        return groupTitle || el;
+      }
+    }
+    
+    return null;
+  };
+
+  /**
+   * 标题跳转逻辑
+   * 参考思源本体 Outline.ts，先检查块折叠状态再决定跳转方式
+   */
   const handleClick = async (heading: Heading) => {
-    // 处理文档标题点击
+    // 处理文档标题点击 - 滚动到顶部
     if (heading.id === currentDocId) {
       if (targetElement) {
         const content = targetElement.querySelector(".protyle-content");
@@ -742,53 +875,7 @@
       return;
     }
 
-    // 1. 清理状态
-    clearHighlightsAndSelection();
-
-    // 2. 检查是否在聚焦模式
-    const exitFocusBtn = targetElement?.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]') as HTMLElement;
-    const isFocusMode = exitFocusBtn && !exitFocusBtn.classList.contains("fn__none");
-
-    // 3. 尝试在 DOM 中查找目标块
-    let targetBlock = findTargetBlock(heading);
-    
-    if (targetBlock) {
-      // 目标块在 DOM 中，直接滚动
-      scrollAndHighlight(targetBlock);
-      return;
-    }
-
-    // 4. 目标块不在 DOM 中
-    console.log("Floating TOC: Target block not in DOM:", heading.id, "Focus mode:", isFocusMode);
-
-    // 5. 如果在聚焦模式，需要先退出聚焦模式
-    if (isFocusMode) {
-      // 聚焦模式下，目标不在 DOM 中意味着它在聚焦范围外
-      // 直接使用回退导航（会退出聚焦模式）
-      await handleFallbackNavigation(heading.id);
-      return;
-    }
-
-    // 6. 非聚焦模式，尝试使用 protyle scroll API
-    if (currentProtyle?.scroll) {
-      const scrollSuccess = await tryProtyleScrollApi(heading.id);
-      if (scrollSuccess) return;
-    }
-
-    // 7. 使用 getDoc API 加载块
-    const loadSuccess = await loadBlockViaGetDoc(heading.id);
-    if (loadSuccess) return;
-
-    // 8. 尝试使用思源全局 API
-    const globalSuccess = await trySiyuanGlobalApi(heading.id);
-    if (globalSuccess) return;
-
-    // 9. 最终回退
-    await handleFallbackNavigation(heading.id);
-  };
-
-  // 清理高亮和选区
-  const clearHighlightsAndSelection = () => {
+    // 1. 清除高亮和选区
     document.querySelectorAll('.protyle-wysiwyg--hl').forEach(el => {
       el.classList.remove('protyle-wysiwyg--hl');
     });
@@ -796,266 +883,56 @@
     if (selection && selection.rangeCount > 0) {
       selection.removeAllRanges();
     }
-  };
 
-  // 在 DOM 中查找目标块
-  const findTargetBlock = (heading: Heading): Element | null => {
-    // 优先使用缓存的元素引用
-    if (heading.element && document.contains(heading.element)) {
-      return heading.element;
-    }
-
-    const searchRoot: ParentNode = targetElement || document;
-    const candidates = searchRoot.querySelectorAll(
-      `[data-node-id="${heading.id}"], [data-id="${heading.id}"]`
-    );
-    
-    for (const element of Array.from(candidates)) {
-      // 跳过嵌入块、不可见元素
-      if (element.closest('.protyle-embed') || 
-          (element as HTMLElement).offsetParent === null || 
-          (element as HTMLElement).offsetWidth === 0 || 
-          (element as HTMLElement).offsetHeight === 0) {
-        continue;
+    // 2. 数据库分组（AV Groups）特殊处理 - 直接在 DOM 中查找滚动
+    // 数据库分组的 ID 不是思源块 ID，无法使用 checkBlockFold 和 openTab API
+    if (heading.subType === "av-group") {
+      const targetBlock = findTargetBlockInDom(heading);
+      if (targetBlock) {
+        scrollToBlockInDom(targetBlock);
       }
-      
-      // 优先选择标题类型元素
-      if (element.getAttribute('data-type') === 'NodeHeading') {
-        return element;
-      }
-      // 支持数据库分组
-      if (element.hasAttribute('data-id')) {
-        const groupTitle = element.closest('.av__group-title');
-        return groupTitle || element;
-      }
-      if (element.hasAttribute('data-node-id')) {
-        return element;
-      }
-    }
-    
-    return null;
-  };
-
-  // 滚动到块并高亮
-  const scrollAndHighlight = (targetBlock: Element) => {
-    const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
-    
-    headingBlock.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-    
-    // 只对标题块应用高亮
-    if (headingBlock.hasAttribute('data-node-id') && 
-        headingBlock.getAttribute('data-type') === 'NodeHeading') {
-      headingBlock.classList.add('protyle-wysiwyg--hl');
-      setTimeout(() => {
-        headingBlock.classList.remove('protyle-wysiwyg--hl');
-      }, 1024);
-    }
-  };
-
-  // 尝试使用 protyle scroll API
-  const tryProtyleScrollApi = async (blockId: string): Promise<boolean> => {
-    try {
-      const scroll = currentProtyle?.scroll;
-      if (!scroll || typeof scroll.updateIndex !== 'function') {
-        return false;
-      }
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 2000);
-        
-        scroll.updateIndex(currentProtyle, blockId, (index: number) => {
-          clearTimeout(timeout);
-          if (index >= 0) {
-            // 找到了，等待 DOM 更新
-            setTimeout(() => {
-              const block = targetElement?.querySelector(`[data-node-id="${blockId}"]`) ||
-                           document.querySelector(`[data-node-id="${blockId}"]`);
-              if (block) {
-                scrollAndHighlight(block);
-                resolve(true);
-              } else {
-                resolve(false);
-              }
-            }, 200);
-          } else {
-            resolve(false);
-          }
-        });
-      });
-    } catch (e) {
-      console.warn("Floating TOC: tryProtyleScrollApi failed:", e);
-      return false;
-    }
-  };
-
-  // 通过 getDoc API 加载块
-  const loadBlockViaGetDoc = async (blockId: string): Promise<boolean> => {
-    try {
-      const result = await getDocWithScroll(blockId, currentDocId);
-      
-      if (result.success) {
-        // 等待 protyle 渲染
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        const block = targetElement?.querySelector(`[data-node-id="${blockId}"]`) ||
-                     document.querySelector(`[data-node-id="${blockId}"]`);
-        if (block) {
-          scrollAndHighlight(block);
-          return true;
-        }
-      }
-    } catch (e) {
-      console.warn("Floating TOC: loadBlockViaGetDoc failed:", e);
-    }
-    return false;
-  };
-
-  // 尝试使用思源全局 API
-  const trySiyuanGlobalApi = async (blockId: string): Promise<boolean> => {
-    try {
-      const siyuan = (window as any).siyuan;
-      
-      // 方法1: 使用 openBlock
-      if (siyuan?.ws?.app?.openBlock) {
-        siyuan.ws.app.openBlock({
-          id: blockId,
-          action: ["cb-get-outline", "cb-get-hl"]
-        });
-        
-        // 等待并检查
-        await new Promise(resolve => setTimeout(resolve, 300));
-        const block = document.querySelector(`[data-node-id="${blockId}"]`);
-        if (block) {
-          scrollAndHighlight(block);
-          return true;
-        }
-      }
-
-      // 方法2: 使用 getProtyle + scrollToBlock
-      if (currentProtyle) {
-        const protyleInstance = (currentProtyle as any).getInstance?.() || currentProtyle;
-        
-        // 检查是否有 reload 方法并使用
-        if (typeof protyleInstance.reload === 'function') {
-          // 设置 block.id 后 reload
-          if (protyleInstance.protyle?.block) {
-            const originalId = protyleInstance.protyle.block.id;
-            protyleInstance.protyle.block.id = blockId;
-            protyleInstance.reload(false);
-            
-            await new Promise(resolve => setTimeout(resolve, 300));
-            const block = document.querySelector(`[data-node-id="${blockId}"]`);
-            if (block) {
-              scrollAndHighlight(block);
-              return true;
-            }
-            // 恢复
-            protyleInstance.protyle.block.id = originalId;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Floating TOC: trySiyuanGlobalApi failed:", e);
-    }
-    return false;
-  };
-
-  // 处理回退导航（聚焦模式下的跨区域跳转）
-  // 参考思源原生大纲实现
-  const handleFallbackNavigation = async (blockId: string) => {
-    // 检查是否在聚焦模式
-    const exitFocusBtn = targetElement?.querySelector('.protyle-breadcrumb__icon[data-type="exit-focus"]') as HTMLElement;
-    const isFocusMode = exitFocusBtn && !exitFocusBtn.classList.contains("fn__none");
-
-    if (isFocusMode) {
-      console.log("Floating TOC: In focus mode, attempting to navigate to:", blockId);
-      
-      // 方法1: 尝试通过 protyle API 退出聚焦模式
-      if (currentProtyle) {
-        const protyleInstance = (currentProtyle as any).getInstance?.() || currentProtyle;
-        const protyleObj = protyleInstance.protyle || currentProtyle;
-        
-        if (protyleObj?.block) {
-          // 设置 showAll = true 退出聚焦模式
-          protyleObj.block.showAll = true;
-          protyleObj.block.id = blockId;
-          
-          // 调用 reload 重新加载文档
-          if (typeof protyleInstance.reload === 'function') {
-            protyleInstance.reload(false);
-            
-            // 等待重新加载完成
-            await new Promise(resolve => setTimeout(resolve, 600));
-            
-            // 查找并滚动到目标块
-            const block = targetElement?.querySelector(`[data-node-id="${blockId}"]`) ||
-                         document.querySelector(`[data-node-id="${blockId}"]`);
-            if (block) {
-              scrollAndHighlight(block);
-              return;
-            }
-          }
-        }
-      }
-      
-      // 方法2: 模拟点击退出聚焦按钮
-      if (exitFocusBtn) {
-        exitFocusBtn.click();
-        
-        // 等待退出聚焦并重新加载内容
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // 再次尝试在 DOM 中查找目标块
-        let block = targetElement?.querySelector(`[data-node-id="${blockId}"]`) ||
-                   document.querySelector(`[data-node-id="${blockId}"]`);
-        
-        if (block) {
-          scrollAndHighlight(block);
-          return;
-        }
-        
-        // 如果还是找不到，尝试使用 scroll API
-        if (currentProtyle?.scroll) {
-          const scrollSuccess = await tryProtyleScrollApi(blockId);
-          if (scrollSuccess) return;
-        }
-        
-        // 等待更长时间后再试一次（可能需要动态加载）
-        await new Promise(resolve => setTimeout(resolve, 500));
-        block = targetElement?.querySelector(`[data-node-id="${blockId}"]`) ||
-                document.querySelector(`[data-node-id="${blockId}"]`);
-        if (block) {
-          scrollAndHighlight(block);
-          return;
-        }
-      }
-    }
-
-    // 方法3: 使用思源全局 API openMobileFileById（如果可用）
-    const siyuan = (window as any).siyuan;
-    if (siyuan?.mobileMenu?.openMobileFileById) {
-      siyuan.mobileMenu.openMobileFileById(blockId);
       return;
     }
 
-    // 方法4: 使用 openTab API（桌面端）
-    if (siyuan?.app?.openTab) {
-      siyuan.app.openTab({
-        app: siyuan.app,
-        doc: {
-          id: blockId,
-          action: ["cb-get-hl", "cb-get-focus"]
-        }
-      });
+    // 3. 历史记录、搜索预览等特殊模式 - 直接在 DOM 中查找滚动
+    // 这些模式下使用 API 会跳转到主文档而非当前预览内容
+    if (isSpecialMode()) {
+      const targetBlock = findTargetBlockInDom(heading);
+      if (targetBlock) {
+        scrollToBlockInDom(targetBlock);
+      }
       return;
     }
 
-    // 最终回退：使用 siyuan:// 协议跳转
-    console.log("Floating TOC: Using protocol navigation for:", blockId);
-    window.location.href = `siyuan://blocks/${blockId}`;
+    // 4. 调用 checkBlockFold API 检查块是否处于折叠/不可见状态
+    // 在思源中，聚焦模式外的块、动态加载未加载的块都会返回 true
+    let isFolded = false;
+    try {
+      isFolded = await checkBlockFold(heading.id);
+    } catch (e) {
+      console.warn("Floating TOC: checkBlockFold failed", e);
+    }
+
+    // 4. 如果块被折叠/不可见，直接使用官方 API 跳转
+    if (isFolded) {
+      await navigateToBlock(heading.id);
+      return;
+    }
+
+    // 5. 块未折叠，尝试在 DOM 中查找并滚动
+    // 使用短延迟确保编辑器状态稳定
+    setTimeout(async () => {
+      const targetBlock = findTargetBlockInDom(heading);
+      
+      if (targetBlock) {
+        // 在 DOM 中找到了可见的目标块，直接滚动
+        scrollToBlockInDom(targetBlock);
+      } else {
+        // DOM 中找不到（可能是动态加载场景，checkBlockFold 返回了错误结果）
+        // 使用官方 API 跳转作为回退
+        await navigateToBlock(heading.id);
+      }
+    }, 50);
   };
 
 
@@ -1564,25 +1441,29 @@
     overflow-y: auto;
     padding: 8px 0;
     flex: 1;
-    scrollbar-width: thin;
-    scrollbar-color: var(--b3-theme-on-surface-light) var(--b3-theme-surface);
+    scrollbar-width: none; /* Firefox: 完全隐藏滚动条 */
   }
-
+  
   .toc-content::-webkit-scrollbar {
-    width: 6px;
+    width: 3px;
+    background: transparent;
   }
 
   .toc-content::-webkit-scrollbar-track {
-    background: var(--b3-theme-surface);
+    background: transparent;
   }
 
   .toc-content::-webkit-scrollbar-thumb {
-    background: var(--b3-theme-on-surface-light);
-    border-radius: 3px;
+    background: transparent;
+    border-radius: 2px;
   }
 
-  .toc-content::-webkit-scrollbar-thumb:hover {
-    background: var(--b3-theme-on-surface);
+  .toc-content:hover::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.15);
+  }
+
+  .toc-content:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.25);
   }
 
   .toc-empty {
