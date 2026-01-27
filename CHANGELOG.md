@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.17] - 2026-01-27
+
+### Added
+- **Right-Click to Exit Fullscreen**: Added a new feature allowing users to exit fullscreen mode by right-clicking anywhere on the screen. This can be toggled in settings under "Fullscreen Helper" (enabled by default).
+
+### Refactored
+- **Modular Architecture**: Completely refactored the codebase into a modular architecture for better maintainability:
+  - `modules/eventHandlers.ts` - Event handling logic
+  - `modules/protyleManager.ts` - Protyle instance management
+  - `modules/docIdResolver.ts` - Document ID resolution
+  - `utils/domUtils.ts` - DOM utility functions
+- **Main Entry Point**: Reduced `index.ts` from ~1150 lines to ~160 lines by extracting logic into dedicated modules.
+- **Pre-bound Event Handlers**: Adopted pre-bound event handler pattern to prevent memory leaks from repeated `.bind()` calls.
+- **Centralized Constants**: Added timing constants and MutationObserver configuration to `types.ts` for better consistency.
+
 ## [0.1.16] - 2026-01-26
 
 ### Fixed
