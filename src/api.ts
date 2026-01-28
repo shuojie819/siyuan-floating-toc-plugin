@@ -90,10 +90,11 @@ export async function getDocInfo(id: string): Promise<any> {
  * 检查块是否被折叠/不可见
  * 参考思源原生 Outline.ts 实现
  * 聚焦模式外的块、动态加载未加载的块都会返回 true
+ * API 返回格式: {"code": 0, "data": {"isFolded": true, "isRoot": false}}
  */
 export async function checkBlockFold(id: string): Promise<boolean> {
-    const result = await fetchPost<boolean>("/api/block/checkBlockFold", { id });
-    return result.code === 0 ? result.data : false;
+    const result = await fetchPost<{isFolded: boolean, isRoot: boolean}>("/api/block/checkBlockFold", { id });
+    return result.code === 0 ? result.data?.isFolded : false;
 }
 
 /**

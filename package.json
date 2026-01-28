@@ -1,8 +1,10 @@
 {
   "name": "siyuan-floating-toc-plugin",
-  "version": "0.1.17",
+  "version": "0.1.19",
   "type": "module",
   "description": "Floating Table of Contents for SiYuan Note",
+  "main": "dist/index.js",
+  "repository": "https://github.com/shuojie819/siyuan-floating-toc-plugin",
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build"

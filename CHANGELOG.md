@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.19] - 2026-01-29
+
+### Fixed
+- **Heading Navigation Fix**: Fixed an issue where clicking on headings in the TOC would fail to navigate correctly.
+  - Fixed `checkBlockFold` API response parsing to correctly extract the `isFolded` field from the response object.
+  - Added filtering to exclude breadcrumb elements (`.protyle-breadcrumb`) from DOM search, preventing incorrect element selection.
+  - Added filtering to exclude TOC's own elements (`.floating-toc`, `.siyuan-floating-toc-plugin-container`) from DOM search, preventing self-referential navigation failures.
+
+## [0.1.18] - 2026-01-28
+
+### Changed
+- **Publishing Configuration**: Changed `disabledInPublish` to `false` to allow plugin usage in published documents.
+- **Package Configuration**: Added `main` entry point and `repository` field to package.json.
+
 ## [0.1.17] - 2026-01-27
 
 ### Added

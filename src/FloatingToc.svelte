@@ -759,10 +759,12 @@
    * 参考思源本体 Outline.ts 实现
    */
   const navigateToBlock = async (blockId: string) => {
+    // console.log('DEBUG: navigateToBlock - blockId:', blockId);
     // 使用 plugin.openTab 进行跳转，这是思源官方插件 API
     // 会自动处理动态加载、聚焦模式等场景
-    if (plugin && typeof plugin.addTab === 'function') {
+    if (plugin && typeof plugin.openTab === 'function') {
       try {
+        // console.log('DEBUG: navigateToBlock - using plugin.openTab');
         await plugin.openTab({
           app: plugin.app,
           doc: {
@@ -780,6 +782,7 @@
     }
     
     // 回退方案：使用 siyuan 协议
+    // console.log('DEBUG: navigateToBlock - using siyuan:// protocol');
     window.open(`siyuan://blocks/${blockId}`, "_blank");
     return true;
   };
@@ -788,10 +791,12 @@
    * 在 DOM 中滚动到目标块并高亮
    */
   const scrollToBlockInDom = (targetBlock: Element) => {
+    // console.log('DEBUG: scrollToBlockInDom - targetBlock:', targetBlock);
     const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
     const contentElement = headingBlock.closest('.protyle-content');
     
     if (contentElement) {
+      // console.log('DEBUG: scrollToBlockInDom - executing scrollIntoView');
       headingBlock.scrollIntoView({
         behavior: 'smooth',
         block: 'start'
@@ -809,6 +814,7 @@
       }
       return true;
     }
+    // console.log('DEBUG: scrollToBlockInDom - contentElement not found');
     return false;
   };
 
@@ -816,11 +822,14 @@
    * 在 DOM 中查找目标块
    */
   const findTargetBlockInDom = (heading: Heading): Element | null => {
+    // console.log('DEBUG: findTargetBlockInDom - searching for:', heading.id);
+    
     // 首先检查 heading.element 是否仍在 DOM 中
     if (heading.element && document.contains(heading.element)) {
       const el = heading.element as HTMLElement;
       // 确保元素可见
       if (el.offsetParent !== null && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        // console.log('DEBUG: findTargetBlockInDom - found via heading.element');
         return el;
       }
     }
@@ -830,32 +839,42 @@
       `[data-node-id="${heading.id}"], [data-id="${heading.id}"]`
     );
     
+    // console.log('DEBUG: findTargetBlockInDom - querySelectorAll found:', targetElements.length, 'elements');
+    
     for (const element of Array.from(targetElements)) {
       const el = element as HTMLElement;
       
-      // 跳过嵌入块、不可见元素
+      // 跳过嵌入块、不可见元素、面包屑元素、TOC自身元素
       if (el.closest('.protyle-embed') || 
+          el.closest('.protyle-breadcrumb') ||
+          el.closest('.siyuan-floating-toc-plugin-container') ||
+          el.closest('.floating-toc') ||
           el.offsetParent === null || 
           el.offsetWidth === 0 || 
           el.offsetHeight === 0) {
+        // console.log('DEBUG: findTargetBlockInDom - skipping element (embed/breadcrumb/toc/invisible)');
         continue;
       }
       
       // 优先选择标题类型元素
       if (el.getAttribute('data-type') === 'NodeHeading') {
+        // console.log('DEBUG: findTargetBlockInDom - found NodeHeading');
         return el;
       }
       // 其次选择带有 data-node-id 的块元素
       else if (el.hasAttribute('data-node-id')) {
+        // console.log('DEBUG: findTargetBlockInDom - found data-node-id element');
         return el;
       }
       // 支持数据库分组 (AV Groups)
       else if (el.hasAttribute('data-id')) {
         const groupTitle = el.closest('.av__group-title');
+        // console.log('DEBUG: findTargetBlockInDom - found AV group');
         return groupTitle || el;
       }
     }
     
+    // console.log('DEBUG: findTargetBlockInDom - NOT FOUND');
     return null;
   };
 
@@ -864,8 +883,11 @@
    * 参考思源本体 Outline.ts，先检查块折叠状态再决定跳转方式
    */
   const handleClick = async (heading: Heading) => {
+    // console.log('DEBUG: handleClick - heading:', heading.id, heading.content);
+    
     // 处理文档标题点击 - 滚动到顶部
     if (heading.id === currentDocId) {
+      // console.log('大纲跳转方式: 文档标题 → 滚动到顶部');
       if (targetElement) {
         const content = targetElement.querySelector(".protyle-content");
         if (content) {
@@ -887,6 +909,7 @@
     // 2. 数据库分组（AV Groups）特殊处理 - 直接在 DOM 中查找滚动
     // 数据库分组的 ID 不是思源块 ID，无法使用 checkBlockFold 和 openTab API
     if (heading.subType === "av-group") {
+      // console.log('大纲跳转方式: 数据库分组 → DOM滚动');
       const targetBlock = findTargetBlockInDom(heading);
       if (targetBlock) {
         scrollToBlockInDom(targetBlock);
@@ -897,6 +920,7 @@
     // 3. 历史记录、搜索预览等特殊模式 - 直接在 DOM 中查找滚动
     // 这些模式下使用 API 会跳转到主文档而非当前预览内容
     if (isSpecialMode()) {
+      // console.log('大纲跳转方式: 历史/搜索预览 → DOM滚动');
       const targetBlock = findTargetBlockInDom(heading);
       if (targetBlock) {
         scrollToBlockInDom(targetBlock);
@@ -909,27 +933,33 @@
     let isFolded = false;
     try {
       isFolded = await checkBlockFold(heading.id);
+      // console.log('DEBUG: handleClick - checkBlockFold result:', isFolded);
     } catch (e) {
       console.warn("Floating TOC: checkBlockFold failed", e);
     }
 
     // 4. 如果块被折叠/不可见，直接使用官方 API 跳转
     if (isFolded) {
+      // console.log('大纲跳转方式: 聚焦外/动态范围外的标题 → API跳转 (navigateToBlock)');
       await navigateToBlock(heading.id);
       return;
     }
 
     // 5. 块未折叠，尝试在 DOM 中查找并滚动
     // 使用短延迟确保编辑器状态稳定
+    // console.log('DEBUG: handleClick - isFolded=false, trying DOM scroll');
     setTimeout(async () => {
       const targetBlock = findTargetBlockInDom(heading);
+      // console.log('DEBUG: handleClick - findTargetBlockInDom result:', targetBlock);
       
       if (targetBlock) {
         // 在 DOM 中找到了可见的目标块，直接滚动
+        // console.log('大纲跳转方式: 普通标题 → DOM滚动 (scrollToBlockInDom)');
         scrollToBlockInDom(targetBlock);
       } else {
         // DOM 中找不到（可能是动态加载场景，checkBlockFold 返回了错误结果）
         // 使用官方 API 跳转作为回退
+        // console.log('大纲跳转方式: 动态加载范围外 → API跳转回退 (navigateToBlock)');
         await navigateToBlock(heading.id);
       }
     }, 50);
