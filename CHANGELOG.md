@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.20] - 2026-02-25
+
+### Fixed
+- **Backlink Area Exclusion**: Fixed an issue where the TOC button would incorrectly appear in backlink areas (Issue #11).
+  - Added filtering to exclude official backlink panels (`.sy__backlink`, `.backlinkList`, `.backlinkMList`).
+  - Added filtering to exclude third-party plugin backlink areas (elements with `data-defid` or `data-ismention` attributes).
+  - Added filtering to exclude custom backlink panels (`.backlink-panel`).
+  - Improved MutationObserver to skip processing changes in backlink areas for better performance.
+- **Mobile Settings UI**: Fixed an issue where the settings panel displayed incorrectly on Android mobile devices (Issue #10).
+  - Settings tabs now display horizontally on mobile screens for better accessibility.
+  - Setting items now stack vertically on mobile to prevent text truncation.
+  - Added responsive layout with media queries for screens under 768px width.
+  - Fixed tab text not displaying by overriding SiYuan's default `.b3-list-item__text` styles.
+  - Improved tab bar flex layout to ensure equal width distribution and proper text centering.
+
 ## [0.1.19] - 2026-01-29
 
 ### Fixed
