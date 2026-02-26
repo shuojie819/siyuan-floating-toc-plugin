@@ -44,15 +44,17 @@
 <style>
     .b3-label {
         display: flex;
+        flex-direction: column;
         margin-bottom: 12px;
-        align-items: center;
-        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
     }
     .fn__flex-1 {
         flex: 1;
         display: flex;
         flex-direction: column;
         gap: 4px;
+        width: 100%;
     }
     .b3-label__text {
         font-size: 12px;
@@ -61,11 +63,30 @@
     .fn__flex-center {
         display: flex;
         align-items: center;
+        width: 100%;
     }
     .config-item-title {
         display: flex;
         align-items: center;
         justify-content: flex-start;
         text-align: left;
+    }
+    .fn__size200 {
+        width: 100%;
+        max-width: 200px;
+    }
+
+    @media (min-width: 769px) {
+        .b3-label {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .fn__flex-1 {
+            width: auto;
+        }
+        .fn__flex-center {
+            width: auto;
+        }
     }
 </style>

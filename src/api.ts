@@ -49,6 +49,17 @@ export async function fetchPost<T = any>(
 }
 
 /**
+ * 检查 ID 是否为思源有效的块 ID 格式
+ * 思源块 ID 格式：14位日期-7位随机字符，如 20231201-abcdefg
+ * @param id ID 字符串
+ * @returns 是否为有效的块 ID 格式
+ */
+export function isValidBlockId(id: string | null | undefined): boolean {
+    if (!id || typeof id !== 'string') return false;
+    return /^\d{14}-[a-z0-9]{7}$/i.test(id);
+}
+
+/**
  * 获取文档大纲
  * @param id 文档或块 ID
  * @param preview 是否为预览模式（默认 false）
@@ -57,6 +68,10 @@ export async function getDocOutline(
     id: string, 
     preview: boolean = false
 ): Promise<IOutlineItem[]> {
+    if (!isValidBlockId(id)) {
+        return [];
+    }
+    
     const result = await fetchPost<IOutlineItem[]>("/api/outline/getDocOutline", {
         id,
         preview
@@ -93,6 +108,9 @@ export async function getDocInfo(id: string): Promise<any> {
  * API 返回格式: {"code": 0, "data": {"isFolded": true, "isRoot": false}}
  */
 export async function checkBlockFold(id: string): Promise<boolean> {
+    if (!isValidBlockId(id)) {
+        return false;
+    }
     const result = await fetchPost<{isFolded: boolean, isRoot: boolean}>("/api/block/checkBlockFold", { id });
     return result.code === 0 ? result.data?.isFolded : false;
 }

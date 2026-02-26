@@ -680,6 +680,14 @@
     focusedIds.clear();
 
     try {
+      // 检查页面是否准备好（避免在页面未加载完成时调用 API）
+      if (targetElement) {
+        const loading = targetElement.getAttribute("data-loading");
+        if (loading === "true") {
+          return;
+        }
+      }
+
       // 历史记录模式：从 DOM 解析
       if (isHistoryTarget() && targetElement) {
         const domHeadings = collectHeadingsFromDom(targetElement);

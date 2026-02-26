@@ -94,15 +94,46 @@ export function isBreadcrumbElement(element: HTMLElement): boolean {
 }
 
 /**
+ * 检查元素是否在反链区域内
+ * 反链区域包括：
+ * - 官方反链面板：.sy__backlink, .backlinkList, .backlinkMList
+ * - 第三方插件生成的反链区域：通常包含 data-defid 或 data-ismention 属性
+ * @param element 元素
+ * @returns 是否在反链区域内
+ */
+export function isBacklinkArea(element: HTMLElement): boolean {
+    if (element.closest('.sy__backlink')) return true;
+    if (element.closest('.backlinkList')) return true;
+    if (element.closest('.backlinkMList')) return true;
+    if (element.closest('[data-defid]')) return true;
+    if (element.closest('[data-ismention]')) return true;
+    if (element.closest('.backlink-panel')) return true;
+    return false;
+}
+
+/**
  * 检查元素是否为 protyle 相关元素
  * @param element 元素
  * @returns 是否为 protyle 相关元素
  */
 export function isProtyleRelatedElement(element: HTMLElement): boolean {
+    if (isBacklinkArea(element)) return false;
     return element.classList.contains('protyle') || 
            !!element.querySelector('.protyle') ||
            element.classList.contains('dialog-globalsearch') ||
            element.classList.contains('b3-dialog');
+}
+
+/**
+ * 检查 protyle 元素是否应该显示 TOC
+ * 排除：反链区域、嵌入块、悬浮预览等
+ * @param protyleElement protyle 元素
+ * @returns 是否应该显示 TOC
+ */
+export function shouldShowToc(protyleElement: HTMLElement): boolean {
+    if (isBacklinkArea(protyleElement)) return false;
+    if (protyleElement.closest('.protyle-wysiwyg__embed')) return false;
+    return true;
 }
 
 /**

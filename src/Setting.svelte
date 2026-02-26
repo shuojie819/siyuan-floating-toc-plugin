@@ -321,38 +321,76 @@
     .config__panel {
         height: 100%;
         display: flex;
+        flex-direction: column;
         overflow: hidden;
     }
     .b3-tab-bar {
-        width: 200px;
-        height: 100%;
-        border-right: 1px solid var(--b3-border-color);
-        overflow-y: auto;
+        display: flex;
+        flex-wrap: wrap;
+        width: 100%;
+        border-bottom: 1px solid var(--b3-border-color);
         margin: 0;
         padding: 0;
         list-style: none;
+        background: var(--b3-theme-background);
+        flex-shrink: 0;
     }
     .config__tab-wrap {
         flex: 1;
-        height: 100%;
+        min-height: 0;
         overflow-y: auto;
         padding: 10px;
     }
     .b3-list-item {
         cursor: pointer;
-        padding: 8px 16px;
-        border-bottom: 1px solid var(--b3-border-color);
+        padding: 8px 12px;
+        border-right: 1px solid var(--b3-border-color);
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        min-width: 0;
     }
-    .b3-list-item:first-child {
-        border-top: 1px solid var(--b3-border-color);
+    .b3-list-item:last-child {
+        border-right: none;
     }
     .b3-list-item--selected {
         background-color: var(--b3-theme-surface);
         color: var(--b3-theme-primary);
     }
+    .b3-list-item__text {
+        display: inline !important;
+        font-size: 14px;
+    }
     .b3-label {
         display: flex;
         margin-bottom: 12px;
         align-items: center;
+    }
+
+    @media (min-width: 769px) {
+        .config__panel {
+            flex-direction: row;
+        }
+        .b3-tab-bar {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            width: 200px;
+            height: 100%;
+            border-right: 1px solid var(--b3-border-color);
+            border-bottom: none;
+            flex-shrink: 0;
+        }
+        .b3-list-item {
+            border-right: none;
+            border-bottom: 1px solid var(--b3-border-color);
+            flex: none;
+            justify-content: flex-start;
+            padding: 8px 16px;
+        }
+        .b3-list-item:first-child {
+            border-top: 1px solid var(--b3-border-color);
+        }
     }
 </style>

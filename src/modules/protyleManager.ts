@@ -11,7 +11,8 @@ import {
     isSearchResultItem,
     isHistoryRelatedElement,
     isSearchAttributeChanged,
-    isHistoryAttributeChanged
+    isHistoryAttributeChanged,
+    shouldShowToc
 } from "../utils/domUtils";
 import { DocIdResolver } from "./docIdResolver";
 import { TIMING, MUTATION_OBSERVER_CONFIG } from "../types";
@@ -163,7 +164,7 @@ export class ProtyleManager {
         candidates.forEach((candidate) => {
             if (!(candidate instanceof HTMLElement)) return;
             const host = getTocHostElement(candidate);
-            if (host) hostSet.add(host);
+            if (host && shouldShowToc(host)) hostSet.add(host);
         });
         const protyles = Array.from(hostSet);
         
