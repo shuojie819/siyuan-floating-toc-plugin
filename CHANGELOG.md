@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.21] - 2026-02-26
+
+### Fixed
+- **API Error Handling**: Fixed console error "invalid ID argument" when calling API with invalid block IDs.
+  - Added `isValidBlockId()` function to validate block ID format before making API calls.
+  - Block IDs must match SiYuan's standard format (14-digit date + 7-char alphanumeric, e.g., `20231201-abcdefg`).
+  - Invalid IDs are now silently skipped instead of triggering API errors.
+- **Page Loading State Check**: Prevented API calls before the page is fully loaded.
+  - Added `data-loading` attribute check in `updateHeadings()` function.
+  - API calls are now skipped when `data-loading="true"` to avoid errors during page initialization.
+
 ## [0.1.20] - 2026-02-25
 
 ### Fixed
@@ -16,10 +27,6 @@ All notable changes to this project will be documented in this file.
   - Added responsive layout with media queries for screens under 768px width.
   - Fixed tab text not displaying by overriding SiYuan's default `.b3-list-item__text` styles.
   - Improved tab bar flex layout to ensure equal width distribution and proper text centering.
-- **API Error Handling**: Fixed console error "invalid ID argument" when calling API with invalid block IDs.
-  - Added `isValidBlockId()` function to validate block ID format before making API calls.
-  - Block IDs must match SiYuan's standard format (14-digit date + 7-char alphanumeric, e.g., `20231201-abcdefg`).
-  - Invalid IDs are now silently skipped instead of triggering API errors.
 
 ## [0.1.19] - 2026-01-29
 
