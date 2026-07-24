@@ -15,7 +15,9 @@ import {
     isHistoryAttributeChanged,
     shouldShowToc,
     isCoveredByBazaar,
-    isAiOrChatPanel
+    isCoveredByDialog,
+    isAiOrChatPanel,
+    isElementVisible
 } from "../utils/domUtils";
 import { DocIdResolver } from "./docIdResolver";
 import { TIMING, MUTATION_OBSERVER_CONFIG } from "../types";
@@ -47,6 +49,7 @@ export class ProtyleManager {
             let searchResultChanged = false;
             let historyResultChanged = false;
             let bazaarChanged = false;
+            let dialogChanged = false;
             
             for (const mutation of mutations) {
                 if (mutation.type === 'childList') {
@@ -89,6 +92,21 @@ export class ProtyleManager {
                                 bazaarChanged = true;
                                 shouldCheck = true;
                             }
+                            // 监听弹窗被添加到 DOM（设置/搜索/集市详情弹窗等）
+                            if (node.classList.contains('b3-dialog') || node.classList.contains('b3-dialog--open') ||
+                                node.querySelector('.b3-dialog, .b3-dialog--open')) {
+                                dialogChanged = true;
+                                shouldCheck = true;
+                            }
+                            // 监听全局搜索/文件历史弹窗/面板被添加到 DOM
+                            // dialogChanged 覆盖含义：包含普通弹窗以及搜索/历史面板（覆盖层）的增删与属性变化
+                            if (node.classList.contains('search__panel') || node.classList.contains('search__preview') ||
+                                node.classList.contains('history__panel') || node.classList.contains('history__side') || node.classList.contains('history__text') ||
+                                node.hasAttribute('data-key') && String(node.getAttribute('data-key')).startsWith('dialog-') ||
+                                node.querySelector('.search__panel, .search__preview, .history__panel, .history__side, .history__text, [data-key^="dialog-"]')) {
+                                dialogChanged = true;
+                                shouldCheck = true;
+                            }
                         }
                     }
                     for (const node of mutation.removedNodes) {
@@ -100,6 +118,21 @@ export class ProtyleManager {
                             if (node.id === 'configBazaarReadme' ||
                                 node.classList.contains('config-bazaar__readme')) {
                                 bazaarChanged = true;
+                                shouldCheck = true;
+                            }
+                            // 监听弹窗被移除
+                            if (node.classList.contains('b3-dialog') || node.classList.contains('b3-dialog--open') ||
+                                node.querySelector('.b3-dialog, .b3-dialog--open')) {
+                                dialogChanged = true;
+                                shouldCheck = true;
+                            }
+                            // 监听全局搜索/文件历史弹窗/面板被移除
+                            // dialogChanged 覆盖含义：包含普通弹窗以及搜索/历史面板（覆盖层）的增删与属性变化
+                            if (node.classList.contains('search__panel') || node.classList.contains('search__preview') ||
+                                node.classList.contains('history__panel') || node.classList.contains('history__side') || node.classList.contains('history__text') ||
+                                node.hasAttribute('data-key') && String(node.getAttribute('data-key')).startsWith('dialog-') ||
+                                node.querySelector('.search__panel, .search__preview, .history__panel, .history__side, .history__text, [data-key^="dialog-"]')) {
+                                dialogChanged = true;
                                 shouldCheck = true;
                             }
                         }
@@ -123,6 +156,21 @@ export class ProtyleManager {
                         if (mutation.target.id === 'configBazaarReadme' &&
                             mutation.attributeName === 'class') {
                             bazaarChanged = true;
+                            shouldCheck = true;
+                        }
+                        // 监听弹窗显示/隐藏类变化（.b3-dialog 复用时常见 class/style 变化）
+                        if (mutation.target.classList.contains('b3-dialog') &&
+                            (mutation.attributeName === 'class' || mutation.attributeName === 'style' || mutation.attributeName === 'hidden')) {
+                            dialogChanged = true;
+                            shouldCheck = true;
+                        }
+                        // 监听搜索/历史面板或 dialog 的 class/style/hidden 变化（复用场景）
+                        // dialogChanged 覆盖含义：包含普通弹窗以及搜索/历史面板（覆盖层）的增删与属性变化
+                        if ((mutation.target.classList.contains('search__panel') || mutation.target.classList.contains('search__preview') ||
+                             mutation.target.classList.contains('history__panel') || mutation.target.classList.contains('history__side') || mutation.target.classList.contains('history__text') ||
+                             (mutation.target.hasAttribute('data-key') && String(mutation.target.getAttribute('data-key')).startsWith('dialog-'))) &&
+                            (mutation.attributeName === 'class' || mutation.attributeName === 'style' || mutation.attributeName === 'hidden')) {
+                            dialogChanged = true;
                             shouldCheck = true;
                         }
                     }
@@ -195,7 +243,7 @@ export class ProtyleManager {
      */
     checkProtyles(): void {
         const candidates = Array.from(document.querySelectorAll(
-            ".protyle, .search__preview, .search__doc, .history__text, .history__text .protyle, [data-type='docPanel'].history__text, #configBazaarReadme, .config-bazaar__readme, .config-bazaar__panel, .item__readme"
+            ".protyle, .search__preview .protyle, .search__doc .protyle, .history__text, .history__text .protyle, [data-type='docPanel'].history__text, #configBazaarReadme, .config-bazaar__readme, .config-bazaar__panel, .item__readme"
         ));
         const hostSet = new Set<HTMLElement>();
         candidates.forEach((candidate) => {
@@ -240,10 +288,10 @@ export class ProtyleManager {
             }
             
             if (!existingToc || !hasValidTocDom) {
-                // 清理无效的实例记录
+                // 清理无效的实例（销毁组件并移除容器），再重建，
+                // 确保同一 host 只对应一个 TOC 容器，避免出现多个悬浮大纲叠加
                 if (existingToc) {
-                    this.plugin.tocInstances.delete(p);
-                    this.plugin.tocDocIds.delete(p);
+                    this.destroyTocForHost(p);
                 }
                 this.plugin.createToc(p, docId);
             } else {
@@ -255,12 +303,12 @@ export class ProtyleManager {
             }
         });
 
-        // 清理已移除的 protyle 实例或被集市面板覆盖的 TOC
-        for (const [p, toc] of this.plugin.tocInstances.entries()) {
-            if (!document.contains(p) || isCoveredByBazaar(p) || isAiOrChatPanel(p)) {
-                toc.$destroy();
-                this.plugin.tocInstances.delete(p);
-                this.plugin.tocDocIds.delete(p);
+        // 清理已移除的 protyle 实例、被集市面板覆盖的 TOC，或因设置面板等导致 shouldShowToc 为 false 的残留 TOC
+        for (const [p] of this.plugin.tocInstances.entries()) {
+            if (!document.contains(p) || isCoveredByBazaar(p) || isCoveredByDialog(p) || isAiOrChatPanel(p) || !shouldShowToc(p) || !isElementVisible(p)) {
+                // 使用 destroyTocForHost 确保同时移除外层容器 DOM，
+                // 避免弹窗/面板切换（设置、全局搜索、文件历史）后旧 TOC 容器残留叠加
+                this.destroyTocForHost(p);
             }
         }
         
@@ -280,6 +328,47 @@ export class ProtyleManager {
     }
 
     /**
+     * 移除指定 host 对应的 TOC 外层容器 DOM 元素。
+     * 普通文档：容器是 host 的子元素 .siyuan-floating-toc-plugin-container；
+     * 集市：容器挂在 document.body 上并标记 data-bazaar="true"，通过 _tocHost 关联。
+     */
+    private removeContainerForHost(host: HTMLElement): void {
+        if (isBazaarHost(host)) {
+            document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach((c) => {
+                if ((c as any)._tocHost === host) {
+                    c.remove();
+                }
+            });
+        } else {
+            host.querySelectorAll('.siyuan-floating-toc-plugin-container').forEach((c) => c.remove());
+        }
+    }
+
+    /**
+     * 销毁指定 host 对应的 TOC 组件，并同时移除其外层容器 DOM 元素。
+     *
+     * 这是修复“同一文档出现多个悬浮大纲叠加”的核心：
+     * Svelte 组件实例的 toc.$destroy() 只会移除组件内部渲染的 DOM（.floating-toc），
+     * 不会移除 createToc 中手动创建的 .siyuan-floating-toc-plugin-container 容器，
+     * 导致空容器在 DOM 中累积、重建时多个容器叠加、阴影/透明度叠加变深。
+     * 因此销毁时必须显式移除该容器。
+     */
+    private destroyTocForHost(host: HTMLElement): void {
+        const toc = this.plugin.tocInstances.get(host);
+        if (toc) {
+            try {
+                toc.$destroy();
+            } catch (e) {
+                // 组件已销毁时忽略异常
+            }
+            this.plugin.tocInstances.delete(host);
+            this.plugin.tocDocIds.delete(host);
+        }
+        // 无论组件是否销毁成功，都确保残留容器被移除，避免空容器叠加
+        this.removeContainerForHost(host);
+    }
+
+    /**
      * 创建 TOC 实例
      */
     createToc(protyleElement: HTMLElement, docId: string): void {
@@ -291,12 +380,16 @@ export class ProtyleManager {
                 const host = (container as any)._tocHost;
                 const toc = this.plugin.tocInstances.get(host);
                 if (toc) {
-                    toc.$destroy();
+                    try { toc.$destroy(); } catch (e) { /* ignore */ }
                     this.plugin.tocInstances.delete(host);
                     this.plugin.tocDocIds.delete(host);
                 }
                 container.remove();
             });
+        } else {
+            // 普通文档场景：先清理该 host 上已存在的容器，确保同一 host 只对应一个
+            // TOC 容器，避免重建时多个容器（及多个悬浮大纲）叠加（修复叠加 bug）
+            this.removeContainerForHost(protyleElement);
         }
         
         const container = document.createElement("div");
@@ -402,15 +495,19 @@ export class ProtyleManager {
             this.clickDelegationHandler = null;
         }
         
-        // 清理所有 TOC 实例
+        // 清理所有 TOC 实例（销毁组件并移除容器）
         this.plugin.tocInstances.forEach((toc) => {
-            toc.$destroy();
+            try {
+                toc.$destroy();
+            } catch (e) {
+                // 组件已销毁时忽略异常
+            }
         });
         this.plugin.tocInstances.clear();
         this.plugin.tocDocIds.clear();
         
-        // 清理所有集市容器
-        document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach(container => {
+        // 清理所有 TOC 容器（含普通文档场景，避免卸载后容器残留叠加）
+        document.querySelectorAll('.siyuan-floating-toc-plugin-container').forEach(container => {
             container.remove();
         });
     }

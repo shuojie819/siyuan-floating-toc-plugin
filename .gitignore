@@ -8,3 +8,13 @@ package.zip
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# 构建 / 发布产物（思源插件打包 zip）
+siyuan-floating-toc-plugin.zip
+
+# 本会话沙箱环境遗留的临时 / 缓存目录（非源码，勿提交）
+.npm-cache/
+.wb-cache/
+dist-new/
+node_modules_bak/
+vite.build.tmp.mjs

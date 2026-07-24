@@ -9,6 +9,8 @@
  * @returns 是否为集市主机
  */
 export function isBazaarHost(element: HTMLElement): boolean {
+    // 设置面板里的非集市区域不算集市 host（集市配置页仍要显示 TOC，因此通过了上面判断）
+    if (isSettingsPanel(element)) return false;
     if (element.id === "configBazaarReadme") return true;
     if (element.closest("#configBazaarReadme")) return true;
     if (element.classList.contains("config-bazaar__readme")) return true;
@@ -16,6 +18,22 @@ export function isBazaarHost(element: HTMLElement): boolean {
     if (element.closest(".config-bazaar__panel")) return true;
     if (element.classList.contains("item__readme")) return true;
     return false;
+}
+
+/**
+ * 检查元素是否位于思源设置面板的非集市区域
+ * 注意：设置面板里的集市配置页（README）仍应显示悬浮大纲，因此集市部分不算设置面板
+ */
+export function isSettingsPanel(element: HTMLElement): boolean {
+    const inSettings = element.closest(
+        '.config__panel, .config__tab, .config__tab-container, .config__content'
+    );
+    if (!inSettings) return false;
+    // 设置面板里的集市部分（如 设置 → 集市 的 README）仍要显示大纲，不算设置面板
+    const inBazaar = element.closest(
+        '.config-bazaar__panel, .item__readme, #configBazaarReadme'
+    );
+    return !inBazaar;
 }
 
 /**
@@ -38,6 +56,14 @@ export function getTocHostElement(candidate: HTMLElement): HTMLElement | null {
     if (innerProtyle instanceof HTMLElement) return innerProtyle;
     const docPanel = candidate.querySelector("[data-type='docPanel']");
     if (docPanel instanceof HTMLElement && docPanel.querySelector(".protyle-content")) return docPanel;
+    // 搜索预览/文档面板容器本身不是 TOC 宿主：只挂载其内部的真实 protyle 文档。
+    // 否则在「固定搜索」（dock/常驻侧边，非弹窗）场景下，容器因包含 .protyle-content
+    // 会被误识别为 host，导致 createToc 反复给容器挂上 TOC，造成同一区域多个大纲无限叠加。
+    // 内部存在 .protyle 时已在上方 innerProtyle 分支返回其本身；此处对无内部 protyle 的
+    // 纯容器直接返回 null，由 getSearchPreviewHosts() 专门处理其内部真实文档。
+    if (candidate.classList.contains("search__preview") || candidate.classList.contains("search__doc")) {
+        return null;
+    }
     const hasContent = candidate.querySelector(".protyle-content");
     if (hasContent) return candidate;
     return null;
@@ -174,6 +200,8 @@ export function isGraphView(element: HTMLElement): boolean {
 }
 
 export function shouldShowToc(protyleElement: HTMLElement): boolean {
+    // 设置面板的非集市区域不挂 TOC（集市配置页 README 仍显示大纲）
+    if (isSettingsPanel(protyleElement)) return false;
     if (isBacklinkArea(protyleElement)) return false;
     if (isAiOrChatPanel(protyleElement)) return false;
     if (isGraphView(protyleElement)) return false;
@@ -181,7 +209,10 @@ export function shouldShowToc(protyleElement: HTMLElement): boolean {
     
     // 检查是否被集市面板覆盖
     if (isCoveredByBazaar(protyleElement)) return false;
-    
+
+    // 被任意打开的弹窗遮挡时不挂 TOC（如设置弹窗打开时隐藏文档 TOC）
+    if (isCoveredByDialog(protyleElement)) return false;
+
     return true;
 }
 
@@ -217,6 +248,40 @@ export function isCoveredByBazaar(element: HTMLElement): boolean {
     
     // 元素被集市面板覆盖
     return true;
+}
+
+/**
+ * 检查元素是否被打开的弹窗（dialog）遮挡
+ * 用于设置弹窗打开时隐藏/销毁文档 TOC，同时保留弹窗内部的 TOC（如集市详情弹窗里的 README 大纲）
+ * @param element 元素
+ * @returns 是否被弹窗遮挡
+ */
+export function isCoveredByDialog(element: HTMLElement): boolean {
+    const dialogs = document.querySelectorAll(
+        '.b3-dialog, .b3-dialog--open, [data-key^="dialog-"], .search__panel, .search__preview, .history__panel, .history__side, .history__text'
+    );
+    const elementRect = element.getBoundingClientRect();
+    if (elementRect.width === 0 || elementRect.height === 0) return false;
+
+    for (const dialog of Array.from(dialogs)) {
+        if (!(dialog instanceof HTMLElement)) continue;
+        // 元素本身在弹窗内部，不算被遮挡（弹窗内部的 TOC 应保留）
+        if (dialog === element || dialog.contains(element)) continue;
+
+        const style = getComputedStyle(dialog);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+        const dialogRect = dialog.getBoundingClientRect();
+        if (dialogRect.width === 0 || dialogRect.height === 0) continue;
+
+        // 判断两个矩形是否重叠
+        const overlap = !(elementRect.right <= dialogRect.left ||
+                          elementRect.left >= dialogRect.right ||
+                          elementRect.bottom <= dialogRect.top ||
+                          elementRect.top >= dialogRect.bottom);
+        if (overlap) return true;
+    }
+    return false;
 }
 
 /**
@@ -342,14 +407,23 @@ export function clearEditorPadding(protyleElement: HTMLElement): void {
 }
 
 /**
- * 检查元素是否可见
- * @param element 元素
- * @returns 是否可见
+ * 检查元素是否实际可见（在 DOM 中且未被 display:none / visibility:hidden / 面积为 0）
+ * 用于切换标签页后销毁旧文档的 TOC 实例
+ * @param element 要检查的元素
+ * @returns 是否实际可见
  */
 export function isElementVisible(element: HTMLElement): boolean {
-    return element.offsetParent !== null && 
-           element.offsetWidth > 0 && 
-           element.offsetHeight > 0 && 
-           element.style.display !== 'none' && 
-           element.style.visibility !== 'hidden';
+    if (!document.contains(element)) return false;
+    if (!element.offsetParent) {
+        // offsetParent 为 null 通常表示 display:none 或不在布局中；
+        // 但 fixed/absolute 在某些情况下也会为 null，需要进一步用 rect 判断
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+    }
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
 }
