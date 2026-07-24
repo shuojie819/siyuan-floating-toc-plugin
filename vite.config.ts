@@ -21,7 +21,7 @@ export default defineConfig({
     zipPack({
       inDir: './dist',
       outDir: './',
-      outFileName: 'package.zip'
+      outFileName: 'siyuan-floating-toc-plugin.zip'
     })
   ],
   build: {

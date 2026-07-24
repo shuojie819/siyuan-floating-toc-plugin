@@ -45,5 +45,9 @@
   "zoomIn": "放大",
   "zoomOut": "缩小",
   "resetZoom": "重置缩放",
+  "overlayMode": "悬浮模式（不挤压正文）",
+  "overlayModeDesc": "开启后，大纲悬浮在正文之上，不压缩正文宽度；关闭时固定大纲会像原生侧栏一样推开正文。",
+  "smoothScroll": "平滑滚动",
+  "smoothScrollDesc": "关闭后，点击大纲跳转将瞬间定位，不再有平滑滚动动画。",
   "close": "关闭"
 }

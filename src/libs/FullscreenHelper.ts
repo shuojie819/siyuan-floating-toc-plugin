@@ -1,5 +1,6 @@
 import type { Plugin } from "siyuan";
 import type { FullscreenConfig } from "../types";
+import { isGraphView } from "../utils/domUtils";
 
 export type { FullscreenConfig as FullscreenHelperConfig };
 
@@ -260,6 +261,7 @@ export class FullscreenHelper {
     }
 
     private addButton(container: HTMLElement, type: string, extraCleanups: (() => void)[] = []) {
+        if (isGraphView(container)) return;
         if (this.elementCleanups.has(container)) return;
 
         // console.log("FullscreenHelper: Adding button to container", container, type);

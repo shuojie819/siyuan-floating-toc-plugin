@@ -13,6 +13,8 @@
         followFocus: true,
         miniTocWidth: 32,
         adaptiveHeight: false,
+        overlayMode: false,
+        smoothScroll: true,
         toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
         customCss: "",
         fullscreenConfig: {
@@ -85,6 +87,8 @@
                 dockSide: config.dockSide,
                 followFocus: config.followFocus,
                 adaptiveHeight: config.adaptiveHeight,
+                overlayMode: config.overlayMode,
+                smoothScroll: config.smoothScroll,
                 miniTocWidth: config.miniTocWidth,
                 toolbarConfig: config.toolbarConfig
             });
@@ -172,6 +176,22 @@
                 description={plugin.i18n.adaptiveHeightDesc}
                 value={config.adaptiveHeight}
                 on:change={(e) => handleSettingChange('adaptiveHeight', e.detail)}
+            />
+
+            <SettingItem 
+                type="checkbox" 
+                title={plugin.i18n.overlayMode} 
+                description={plugin.i18n.overlayModeDesc}
+                value={config.overlayMode}
+                on:change={(e) => handleSettingChange('overlayMode', e.detail)}
+            />
+
+            <SettingItem 
+                type="checkbox" 
+                title={plugin.i18n.smoothScroll} 
+                description={plugin.i18n.smoothScrollDesc}
+                value={config.smoothScroll}
+                on:change={(e) => handleSettingChange('smoothScroll', e.detail)}
             />
             
             <SettingItem 

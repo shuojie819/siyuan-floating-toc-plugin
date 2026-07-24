@@ -4,11 +4,35 @@
  */
 
 /**
+ * 检查元素是否为集市主机
+ * @param element 要检查的元素
+ * @returns 是否为集市主机
+ */
+export function isBazaarHost(element: HTMLElement): boolean {
+    if (element.id === "configBazaarReadme") return true;
+    if (element.closest("#configBazaarReadme")) return true;
+    if (element.classList.contains("config-bazaar__readme")) return true;
+    if (element.classList.contains("config-bazaar__panel")) return true;
+    if (element.closest(".config-bazaar__panel")) return true;
+    if (element.classList.contains("item__readme")) return true;
+    return false;
+}
+
+/**
  * 获取 TOC 主机元素
  * @param candidate 候选元素
  * @returns 主机元素或 null
  */
 export function getTocHostElement(candidate: HTMLElement): HTMLElement | null {
+    if (candidate.id === "configBazaarReadme") return candidate;
+    if (candidate.classList.contains("config-bazaar__readme")) return candidate;
+    if (candidate.classList.contains("config-bazaar__panel")) return candidate;
+    if (candidate.classList.contains("item__readme")) {
+        const readmeContainer = candidate.closest("#configBazaarReadme, .config-bazaar__readme, .config-bazaar__panel");
+        if (readmeContainer instanceof HTMLElement) return readmeContainer;
+        return candidate;
+    }
+    
     if (candidate.classList.contains("protyle")) return candidate;
     const innerProtyle = candidate.querySelector(".protyle");
     if (innerProtyle instanceof HTMLElement) return innerProtyle;
@@ -126,13 +150,72 @@ export function isProtyleRelatedElement(element: HTMLElement): boolean {
 
 /**
  * 检查 protyle 元素是否应该显示 TOC
- * 排除：反链区域、嵌入块、悬浮预览等
+ * 排除：反链区域、嵌入块、悬浮预览、被集市面板覆盖的元素等
  * @param protyleElement protyle 元素
  * @returns 是否应该显示 TOC
  */
+/**
+ * 检查元素是否位于 AI / 智能体 / 对话侧栏内
+ * 思源 3.x 的「智能体侧栏」会在对话中渲染 .protyle，需排除以免误挂大纲
+ */
+export function isAiOrChatPanel(element: HTMLElement): boolean {
+    return !!element.closest(
+        '[data-type="sidebar-ai"], .ai__chat, [data-type="ai-chat"], .b3-chat, ' +
+        '[data-type="chat"], .protyle-ai, [data-type="agent"], .agent-panel, ' +
+        '.sidebar-ai, [data-type="sidebar-chat"]'
+    );
+}
+
+/**
+ * 检查元素是否位于关系图/图谱视图内
+ */
+export function isGraphView(element: HTMLElement): boolean {
+    return !!element.closest('[data-type="graph"], .graph, .fullscreen-graph, [data-type="graphView"], .relation-graph');
+}
+
 export function shouldShowToc(protyleElement: HTMLElement): boolean {
     if (isBacklinkArea(protyleElement)) return false;
+    if (isAiOrChatPanel(protyleElement)) return false;
+    if (isGraphView(protyleElement)) return false;
     if (protyleElement.closest('.protyle-wysiwyg__embed')) return false;
+    
+    // 检查是否被集市面板覆盖
+    if (isCoveredByBazaar(protyleElement)) return false;
+    
+    return true;
+}
+
+/**
+ * 检查元素是否被集市面板覆盖
+ * @param element 元素
+ * @returns 是否被覆盖
+ */
+export function isCoveredByBazaar(element: HTMLElement): boolean {
+    const bazaarReadme = document.querySelector('#configBazaarReadme');
+    if (!bazaarReadme) return false;
+    
+    // 检查集市面板是否可见
+    const bazaarStyle = getComputedStyle(bazaarReadme);
+    if (bazaarStyle.display === 'none' || bazaarStyle.visibility === 'hidden') return false;
+    
+    // 检查元素是否在集市面板内
+    if (bazaarReadme.contains(element)) return false;
+    
+    // 检查元素是否被集市面板覆盖
+    const elementRect = element.getBoundingClientRect();
+    const bazaarRect = bazaarReadme.getBoundingClientRect();
+    
+    // 如果元素在集市面板的左侧或右侧，不被覆盖
+    if (elementRect.right <= bazaarRect.left || elementRect.left >= bazaarRect.right) {
+        return false;
+    }
+    
+    // 如果元素在集市面板的上方或下方，不被覆盖
+    if (elementRect.bottom <= bazaarRect.top || elementRect.top >= bazaarRect.bottom) {
+        return false;
+    }
+    
+    // 元素被集市面板覆盖
     return true;
 }
 

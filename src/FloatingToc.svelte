@@ -11,6 +11,10 @@
   export let adaptiveHeight: boolean = false;
   export let miniTocWidth: number = 32;
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
+  export let overlayMode = false;
+  export let smoothScroll = true;
+  // 是否为集市场景（集市的文档对象不同，图钉/切换侧栏/折叠展开等按钮无效，需隐藏）
+  export let isBazaar = false;
 
   let headings: Heading[] = [];
   let focusedIds: Set<string> = new Set();
@@ -81,6 +85,7 @@
       currentPaddingRight: number
   ): { left: number; paddingNeeded: boolean } => {
       const resizeHandleOffset = 6;
+      const EDGE_MARGIN = 14;
       
       if (isExpanded && wRect) {
           if (dockSide === 'left') {
@@ -100,10 +105,10 @@
           }
       } else {
           if (dockSide === 'left') {
-              return { left: rect.left + resizeHandleOffset, paddingNeeded: true };
+              return { left: rect.left + EDGE_MARGIN, paddingNeeded: true };
           } else {
               return { 
-                  left: rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - resizeHandleOffset, 
+                  left: rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - EDGE_MARGIN, 
                   paddingNeeded: false 
               };
           }
@@ -112,6 +117,12 @@
 
   const updatePosition = () => {
       if (!targetElement || !document.contains(targetElement)) return;
+      
+      // 集市页面特殊处理
+      if (isBazaarTarget()) {
+          updateBazaarPosition();
+          return;
+      }
       
       const content = targetElement.querySelector('.protyle-content') as HTMLElement;
       if (!content) return;
@@ -139,24 +150,144 @@
       pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
       
       // 更新编辑器内边距
-      const isFullWidth = checkFullWidthMode(wysiwyg);
-      
-      if (!isFullWidth) {
+      if (overlayMode) {
+          // 悬浮模式：不挤压正文，仅清理可能存在的旧 padding
           updateEditorPadding(targetElement, 0);
-      } else if (isExpanded && wysiwyg) {
-          if (isPinned && paddingNeeded) {
-              const extra = (dockSide === 'left') ? 42 : 0;
-              updateEditorPadding(targetElement, effectiveTocWidth + extra);
+      } else {
+          const isFullWidth = checkFullWidthMode(wysiwyg);
+          if (!isFullWidth) {
+              updateEditorPadding(targetElement, 0);
+          } else if (isExpanded && wysiwyg) {
+              if (isPinned && paddingNeeded) {
+                  const extra = (dockSide === 'left') ? 42 : 0;
+                  updateEditorPadding(targetElement, effectiveTocWidth + extra);
+              } else if (dockSide === 'left') {
+                  updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
+              } else {
+                  updateEditorPadding(targetElement, 0);
+              }
           } else if (dockSide === 'left') {
               updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
           } else {
               updateEditorPadding(targetElement, 0);
           }
-      } else if (dockSide === 'left') {
-          updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
-      } else {
-          updateEditorPadding(targetElement, 0);
       }
+  };
+    
+  let bazaarContentObserver: MutationObserver | null = null;
+  let bazaarVisibilityObserver: MutationObserver | null = null;
+  let bazaarResizeObserver: ResizeObserver | null = null;
+
+  const startBazaarContentObserver = () => {
+      if (bazaarContentObserver) bazaarContentObserver.disconnect();
+      if (bazaarVisibilityObserver) bazaarVisibilityObserver.disconnect();
+      if (bazaarResizeObserver) bazaarResizeObserver.disconnect();
+      if (!targetElement || !isBazaarTarget()) return;
+      
+      const readmeElement = targetElement.querySelector('.item__readme') || 
+                           targetElement.querySelector('.b3-typography') ||
+                           targetElement.querySelector('.item__main');
+      
+      if (readmeElement) {
+          bazaarContentObserver = new MutationObserver((mutations) => {
+              for (const mutation of mutations) {
+                  if (mutation.type === 'childList' || mutation.type === 'subtree') {
+                      updateHeadings(currentDocId);
+                  }
+              }
+          });
+          bazaarContentObserver.observe(readmeElement, { 
+              childList: true, 
+              subtree: true 
+          });
+      }
+      
+      // 监听集市面板的可见性
+      bazaarVisibilityObserver = new MutationObserver(() => {
+          checkBazaarVisibility();
+      });
+      bazaarVisibilityObserver.observe(targetElement, {
+          attributes: true,
+          attributeFilter: ['class'],
+          childList: true,
+          subtree: true
+      });
+      
+      // 检查对话框的移除
+      const dialog = targetElement.closest('.b3-dialog');
+      if (dialog) {
+          bazaarVisibilityObserver.observe(dialog, {
+              childList: true,
+              subtree: true
+          });
+      }
+      
+      // 监听对话框容器大小变化
+      const dialogContainer = targetElement.closest('.b3-dialog__container') || 
+                            targetElement.closest('.b3-dialog');
+      if (dialogContainer) {
+          bazaarResizeObserver = new ResizeObserver(() => {
+              updatePosition();
+          });
+          bazaarResizeObserver.observe(dialogContainer);
+      }
+  };
+  
+  const checkBazaarVisibility = () => {
+      if (!targetElement) {
+          visible = false;
+          return;
+      }
+      
+      const isPanelVisible = targetElement.classList.contains('config-bazaar__readme--show');
+      const isPanelInDom = document.contains(targetElement);
+      
+      if (!isPanelVisible || !isPanelInDom) {
+          visible = false;
+      }
+  };
+
+  const updateBazaarPosition = () => {
+      // 使用对话框容器或 item__main 元素的位置，而不是 README 元素的位置
+      // 因为 README 元素会在容器内部滚动，导致位置不稳定
+      const containerElement = targetElement.closest('.b3-dialog__container') || 
+                              targetElement.closest('.b3-dialog') ||
+                              targetElement.querySelector('.item__main') || 
+                              targetElement;
+      if (!containerElement) return;
+      
+      const rect = containerElement.getBoundingClientRect();
+      const top = Math.max(rect.top, 80);
+      const maxHeight = Math.min(rect.height, window.innerHeight - top - 20);
+      const effectiveTocWidth = getEffectiveTocWidth();
+      
+      let left: number;
+      if (dockSide === 'left') {
+          // 左侧定位：确保不与内容重叠
+          left = Math.max(10, rect.left - (isExpanded ? effectiveTocWidth : miniTocWidth) - 10);
+      } else {
+          // 右侧定位：确保不与内容重叠，且不超出屏幕边界
+          left = rect.right + 10;
+          const maxLeft = window.innerWidth - (isExpanded ? effectiveTocWidth : miniTocWidth) - 10;
+          left = Math.min(left, maxLeft);
+          // 弹窗靠右时，避免 TOC 紧贴屏幕滚动条/边缘
+          const rightSideWidth = isExpanded ? effectiveTocWidth : miniTocWidth;
+          if (left + rightSideWidth + 14 > window.innerWidth) {
+              left = window.innerWidth - rightSideWidth - 14;
+          }
+      }
+      
+      // 确保不超出屏幕边界
+      const currentWidth = isExpanded ? effectiveTocWidth : miniTocWidth;
+      left = Math.max(10, Math.min(left, window.innerWidth - currentWidth - 10));
+      
+      const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
+      const heightStyle = `height: ${maxHeight}px;`;
+
+      pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
+      
+      // 启动内容观察者
+      startBazaarContentObserver();
   };
     
    const updateEditorPadding = (protyleElement: HTMLElement, offset: number) => {
@@ -232,7 +363,7 @@
   };
 
   // Watch for changes
-  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth || visible || adaptiveHeight) {
+  $: if (targetElement || dockSide || isPinned || isHovering || tocWidth || visible || adaptiveHeight || overlayMode || smoothScroll) {
       if (visible) {
           updatePosition();
       } else {
@@ -261,9 +392,21 @@
       }
       
       window.addEventListener('resize', updatePosition);
-      onScroll();
       startAttrObserver(); // Start observing wysiwyg attributes
+      startBazaarContentObserver(); // Start observing bazaar content changes
       updatePosition();
+      
+      // 集市页面立即更新标题，确保大纲显示
+      if (isBazaarTarget()) {
+          updateHeadings(currentDocId);
+      }
+  });
+  
+  afterUpdate(() => {
+      // 定期检查集市面板的可见性
+      if (isBazaarTarget()) {
+          checkBazaarVisibility();
+      }
   });
   
   onDestroy(() => {
@@ -271,6 +414,9 @@
       removeGlobalCheck();
       if (resizeObserver) resizeObserver.disconnect();
       if (attrObserver) attrObserver.disconnect();
+      if (bazaarContentObserver) bazaarContentObserver.disconnect();
+      if (bazaarVisibilityObserver) bazaarVisibilityObserver.disconnect();
+      if (bazaarResizeObserver) bazaarResizeObserver.disconnect();
       
       if (targetElement && appliedPadding) {
           const content = targetElement.querySelector('.protyle-content');
@@ -568,7 +714,6 @@
       return false;
   };
 
-  // 检测是否为搜索预览模式
   const isSearchTarget = () => {
       if (!targetElement) return false;
       if (targetElement.closest(".search__preview")) return true;
@@ -576,9 +721,19 @@
       return false;
   };
 
-  // 检测是否为特殊模式（历史记录、搜索等），这些模式下不应使用 API 跳转
+  const isBazaarTarget = () => {
+    if (!targetElement) return false;
+    if (targetElement.id === "configBazaarReadme") return true;
+    if (targetElement.closest("#configBazaarReadme")) return true;
+    if (targetElement.classList.contains("config-bazaar__readme")) return true;
+    if (targetElement.classList.contains("config-bazaar__panel")) return true;
+    if (targetElement.closest(".config-bazaar__panel")) return true;
+    if (targetElement.classList.contains("item__readme")) return true;
+    return false;
+  };
+
   const isSpecialMode = () => {
-      return isHistoryTarget() || isSearchTarget();
+      return isHistoryTarget() || isSearchTarget() || isBazaarTarget();
   };
 
   const parseHeadingDepth = (el: HTMLElement, fallback: number) => {
@@ -603,7 +758,10 @@
 
   const collectHeadingsFromDom = (root: HTMLElement): Heading[] => {
       const contentRoot =
-          (root.querySelector(".protyle-content") as HTMLElement | null) || root;
+          (root.querySelector(".protyle-content") as HTMLElement | null) ||
+          (root.querySelector(".item__readme") as HTMLElement | null) ||
+          (root.querySelector(".b3-typography") as HTMLElement | null) ||
+          root;
       
       const list: Heading[] = [];
       let syntheticIndex = 0;
@@ -697,6 +855,15 @@
         return;
       }
 
+      // 集市页面模式：从 DOM 解析
+      if (isBazaarTarget() && targetElement) {
+        const domHeadings = collectHeadingsFromDom(targetElement);
+        headings = [];
+        await new Promise(resolve => setTimeout(resolve, 0));
+        headings = domHeadings;
+        return;
+      }
+
       // 检测聚焦模式
       let isFocusMode = false;
       let hasDatabaseGroups = false;
@@ -766,7 +933,23 @@
    * 使用思源官方 API 跳转到指定块
    * 参考思源本体 Outline.ts 实现
    */
-  const navigateToBlock = async (blockId: string) => {
+  /**
+   * 判断当前是否处于 Web / Docker(浏览器) 环境
+   * Web 环境下不应使用 siyuan:// 协议兜底，否则会触发操作系统打开本地客户端
+   */
+  const isWebEnvironment = (): boolean => {
+    const s = (window as any).siyuan;
+    if (s?.config?.system?.container) {
+      return s.config.system.container === 'web';
+    }
+    return !/electron/i.test(navigator.userAgent) && /^(http|https):/.test(location.protocol);
+  };
+
+  /**
+   * 使用思源官方 API 跳转到指定块
+   * 参考思源本体 Outline.ts 实现
+   */
+  const navigateToBlock = async (blockId: string, isFolded = false) => {
     // console.log('DEBUG: navigateToBlock - blockId:', blockId);
     // 使用 plugin.openTab 进行跳转，这是思源官方插件 API
     // 会自动处理动态加载、聚焦模式等场景
@@ -777,9 +960,9 @@
           app: plugin.app,
           doc: {
             id: blockId,
-            // 修复聚焦问题：移除 cb-get-focus 和 cb-get-all（会导致聚焦效果）
-            // 使用 cb-get-hl（高亮）+ cb-get-context（上下文）替代
-            action: ["cb-get-hl", "cb-get-context"],
+            // 折叠状态使用 cb-get-focus 以展开并滚动到目标；
+            // 非折叠状态使用 cb-get-hl 仅高亮，避免改变聚焦视图
+            action: isFolded ? ["cb-get-focus", "cb-get-context"] : ["cb-get-hl", "cb-get-context"],
             zoomIn: false  // 明确禁用缩放/聚焦
           }
         });
@@ -790,8 +973,11 @@
     }
     
     // 回退方案：使用 siyuan 协议
+    // 仅在非 Web 环境执行，避免浏览器/Web(docker) 端唤醒本地客户端 (Issue #19)
     // console.log('DEBUG: navigateToBlock - using siyuan:// protocol');
-    window.open(`siyuan://blocks/${blockId}`, "_blank");
+    if (!isWebEnvironment()) {
+      window.open(`siyuan://blocks/${blockId}`, "_blank");
+    }
     return true;
   };
 
@@ -801,12 +987,16 @@
   const scrollToBlockInDom = (targetBlock: Element) => {
     // console.log('DEBUG: scrollToBlockInDom - targetBlock:', targetBlock);
     const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
-    const contentElement = headingBlock.closest('.protyle-content');
     
-    if (contentElement) {
+    const contentElement = headingBlock.closest('.protyle-content') ||
+                          headingBlock.closest('.item__main') ||
+                          headingBlock.closest('.item__readme') ||
+                          headingBlock.closest('.b3-typography');
+    
+    if (contentElement || isBazaarTarget()) {
       // console.log('DEBUG: scrollToBlockInDom - executing scrollIntoView');
       headingBlock.scrollIntoView({
-        behavior: 'smooth',
+        behavior: smoothScroll ? 'smooth' : 'auto',
         block: 'start'
       });
       
@@ -891,21 +1081,18 @@
    * 参考思源本体 Outline.ts，先检查块折叠状态再决定跳转方式
    */
   const handleClick = async (heading: Heading) => {
-    // console.log('DEBUG: handleClick - heading:', heading.id, heading.content);
-    
-    // 处理文档标题点击 - 滚动到顶部
+    // 文档标题点击 → 滚动到顶部
     if (heading.id === currentDocId) {
-      // console.log('大纲跳转方式: 文档标题 → 滚动到顶部');
       if (targetElement) {
         const content = targetElement.querySelector(".protyle-content");
         if (content) {
-          content.scrollTo({ top: 0, behavior: "smooth" });
+          content.scrollTo({ top: 0, behavior: smoothScroll ? "smooth" : "auto" });
         }
       }
       return;
     }
 
-    // 1. 清除高亮和选区
+    // 清除高亮和选区
     document.querySelectorAll('.protyle-wysiwyg--hl').forEach(el => {
       el.classList.remove('protyle-wysiwyg--hl');
     });
@@ -914,63 +1101,28 @@
       selection.removeAllRanges();
     }
 
-    // 2. 数据库分组（AV Groups）特殊处理 - 直接在 DOM 中查找滚动
-    // 数据库分组的 ID 不是思源块 ID，无法使用 checkBlockFold 和 openTab API
-    if (heading.subType === "av-group") {
-      // console.log('大纲跳转方式: 数据库分组 → DOM滚动');
+    // 数据库分组 / 特殊模式（历史、搜索预览）→ 直接 DOM 滚动
+    if (heading.subType === "av-group" || isSpecialMode()) {
       const targetBlock = findTargetBlockInDom(heading);
-      if (targetBlock) {
-        scrollToBlockInDom(targetBlock);
-      }
+      if (targetBlock) scrollToBlockInDom(targetBlock);
       return;
     }
 
-    // 3. 历史记录、搜索预览等特殊模式 - 直接在 DOM 中查找滚动
-    // 这些模式下使用 API 会跳转到主文档而非当前预览内容
-    if (isSpecialMode()) {
-      // console.log('大纲跳转方式: 历史/搜索预览 → DOM滚动');
-      const targetBlock = findTargetBlockInDom(heading);
-      if (targetBlock) {
-        scrollToBlockInDom(targetBlock);
-      }
+    // 优先尝试在 DOM 中直接定位并滚动（健壮，不依赖 checkBlockFold API）
+    const targetBlock = findTargetBlockInDom(heading);
+    if (targetBlock) {
+      scrollToBlockInDom(targetBlock);
       return;
     }
 
-    // 4. 调用 checkBlockFold API 检查块是否处于折叠/不可见状态
-    // 在思源中，聚焦模式外的块、动态加载未加载的块都会返回 true
+    // DOM 中找不到（祖先折叠 / 动态加载范围外 / 非当前文档）→ 使用官方 API 跳转
     let isFolded = false;
     try {
       isFolded = await checkBlockFold(heading.id);
-      // console.log('DEBUG: handleClick - checkBlockFold result:', isFolded);
     } catch (e) {
       console.warn("Floating TOC: checkBlockFold failed", e);
     }
-
-    // 4. 如果块被折叠/不可见，直接使用官方 API 跳转
-    if (isFolded) {
-      // console.log('大纲跳转方式: 聚焦外/动态范围外的标题 → API跳转 (navigateToBlock)');
-      await navigateToBlock(heading.id);
-      return;
-    }
-
-    // 5. 块未折叠，尝试在 DOM 中查找并滚动
-    // 使用短延迟确保编辑器状态稳定
-    // console.log('DEBUG: handleClick - isFolded=false, trying DOM scroll');
-    setTimeout(async () => {
-      const targetBlock = findTargetBlockInDom(heading);
-      // console.log('DEBUG: handleClick - findTargetBlockInDom result:', targetBlock);
-      
-      if (targetBlock) {
-        // 在 DOM 中找到了可见的目标块，直接滚动
-        // console.log('大纲跳转方式: 普通标题 → DOM滚动 (scrollToBlockInDom)');
-        scrollToBlockInDom(targetBlock);
-      } else {
-        // DOM 中找不到（可能是动态加载场景，checkBlockFold 返回了错误结果）
-        // 使用官方 API 跳转作为回退
-        // console.log('大纲跳转方式: 动态加载范围外 → API跳转回退 (navigateToBlock)');
-        await navigateToBlock(heading.id);
-      }
-    }, 50);
+    await navigateToBlock(heading.id, isFolded);
   };
 
 
@@ -1027,10 +1179,17 @@
           scrollTimer = null;
           if (!targetElement) return;
           
-          const contentElement = targetElement.querySelector(".protyle-content");
+          let contentElement = targetElement.querySelector(".protyle-content");
+          
+          // 集市页面使用不同的滚动容器
+          if (!contentElement && isBazaarTarget()) {
+              contentElement = targetElement.querySelector(".item__main") ||
+                              targetElement.querySelector(".item__readme") as HTMLElement;
+          }
+          
           if (!contentElement) return;
     
-          const useDomHeadings = isHistoryTarget();
+          const useDomHeadings = isHistoryTarget() || isBazaarTarget();
           const headingElements = useDomHeadings
               ? headings.map(h => h.element).filter((el): el is HTMLElement => !!el)
               : Array.from(contentElement.querySelectorAll('[data-type="NodeHeading"]')) as HTMLElement[];
@@ -1087,13 +1246,27 @@
   };
 
   $: if (targetElement) {
-      const contentElement = targetElement.querySelector(".protyle-content");
+      let contentElement = targetElement.querySelector(".protyle-content");
+      
+      // 集市页面使用不同的滚动容器
+      if (!contentElement && isBazaarTarget()) {
+          contentElement = targetElement.querySelector(".item__main") ||
+                          targetElement.querySelector(".item__readme");
+      }
+      
       attachScrollListener(contentElement);
   }
   
   afterUpdate(() => {
       if (targetElement) {
-          const contentElement = targetElement.querySelector(".protyle-content");
+          let contentElement = targetElement.querySelector(".protyle-content");
+          
+          // 集市页面使用不同的滚动容器
+          if (!contentElement && isBazaarTarget()) {
+              contentElement = targetElement.querySelector(".item__main") ||
+                              targetElement.querySelector(".item__readme");
+          }
+          
           attachScrollListener(contentElement);
       }
   });
@@ -1102,6 +1275,7 @@
 {#if visible}
   <div
     class="floating-toc {isPinned ? 'pinned ' + dockSide : (isExpanded ? 'expanded ' + dockSide : 'collapsed ' + dockSide)}"
+    class:bazaar={isBazaar}
     style={pinnedStyle}
     bind:this={container}
     on:mouseleave={onMouseLeave}
@@ -1230,9 +1404,25 @@
 {/if}
 
 <style lang="scss">
+  :global(.siyuan-floating-toc-plugin-container) {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    flex: none;
+  }
+
+  /* 集市（bazaar）详情弹窗场景：容器被挂到 document.body，
+     需提升层级并改用 fixed 定位，避免被 .b3-dialog 弹窗盖住而无法点击。
+     仅作用于 [data-bazaar="true"]，不影响文档/搜索/历史等原场景。 */
+  :global(.siyuan-floating-toc-plugin-container[data-bazaar="true"]) {
+    position: fixed;
+    z-index: 999;
+  }
+
   .floating-toc {
     position: fixed;
-    z-index: 10;
+    z-index: 20;
     display: flex;
     flex-direction: column;
     font-family: var(--b3-font-family);
@@ -1631,5 +1821,13 @@
   .spinning {
     animation: spin 1s linear infinite;
     transform-origin: center;
+  }
+
+  /* 集市场景：隐藏无效的图钉/切换侧栏/折叠展开等按钮与滚动工具栏 */
+  .floating-toc.bazaar .header-actions {
+    display: none;
+  }
+  .floating-toc.bazaar .scroll-toolbar {
+    display: none;
   }
 </style>

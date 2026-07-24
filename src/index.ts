@@ -159,7 +159,10 @@ export default class FloatingTocPlugin extends Plugin {
 
         // 注册事件监听
         this.eventHandlers.register();
-        
+
+        // 重新应用自定义 CSS（修复重启后丢失的问题，Issue #29）
+        this.applyCustomCss(this.data["config.json"]?.customCss || "");
+
         // 监控 protyle 实例
         this.protyleManager.monitorProtyles();
         

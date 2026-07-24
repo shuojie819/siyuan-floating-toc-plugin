@@ -45,5 +45,9 @@
   "zoomIn": "Zoom In",
   "zoomOut": "Zoom Out",
   "resetZoom": "Reset Zoom",
+  "overlayMode": "Overlay mode (don't push content)",
+  "overlayModeDesc": "When on, the TOC floats over the content without shrinking it; when off, a pinned TOC pushes the content like the native sidebar.",
+  "smoothScroll": "Smooth scroll",
+  "smoothScrollDesc": "When off, clicking a TOC item jumps instantly without smooth scrolling animation.",
   "close": "Close"
 }

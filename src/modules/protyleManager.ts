@@ -6,13 +6,16 @@
 import {
     getTocHostElement,
     isHistoryHost,
+    isBazaarHost,
     isBreadcrumbElement,
     isProtyleRelatedElement,
     isSearchResultItem,
     isHistoryRelatedElement,
     isSearchAttributeChanged,
     isHistoryAttributeChanged,
-    shouldShowToc
+    shouldShowToc,
+    isCoveredByBazaar,
+    isAiOrChatPanel
 } from "../utils/domUtils";
 import { DocIdResolver } from "./docIdResolver";
 import { TIMING, MUTATION_OBSERVER_CONFIG } from "../types";
@@ -43,11 +46,18 @@ export class ProtyleManager {
             let shouldCheck = false;
             let searchResultChanged = false;
             let historyResultChanged = false;
+            let bazaarChanged = false;
             
             for (const mutation of mutations) {
                 if (mutation.type === 'childList') {
                     if (mutation.target instanceof HTMLElement) {
                         if (isBreadcrumbElement(mutation.target)) {
+                            shouldCheck = true;
+                        }
+                        // 监听集市页面的显示
+                        if (mutation.target.id === 'configBazaarReadme' ||
+                            mutation.target.classList.contains('config-bazaar__readme')) {
+                            bazaarChanged = true;
                             shouldCheck = true;
                         }
                     }
@@ -72,11 +82,24 @@ export class ProtyleManager {
                                 node.closest('.history__side, .history__list, .history__repo')) {
                                 historyResultChanged = true;
                             }
+                            // 监听集市页面元素的添加
+                            if (node.id === 'configBazaarReadme' ||
+                                node.classList.contains('config-bazaar__readme') ||
+                                node.classList.contains('item__readme')) {
+                                bazaarChanged = true;
+                                shouldCheck = true;
+                            }
                         }
                     }
                     for (const node of mutation.removedNodes) {
                         if (node instanceof HTMLElement) {
                             if (isProtyleRelatedElement(node)) {
+                                shouldCheck = true;
+                            }
+                            // 监听集市页面元素的移除
+                            if (node.id === 'configBazaarReadme' ||
+                                node.classList.contains('config-bazaar__readme')) {
+                                bazaarChanged = true;
                                 shouldCheck = true;
                             }
                         }
@@ -94,6 +117,12 @@ export class ProtyleManager {
                         if (mutation.target.classList.contains('protyle') &&
                             mutation.attributeName === 'data-loading') {
                             searchResultChanged = true;
+                            shouldCheck = true;
+                        }
+                        // 监听集市页面的显示类变化
+                        if (mutation.target.id === 'configBazaarReadme' &&
+                            mutation.attributeName === 'class') {
+                            bazaarChanged = true;
                             shouldCheck = true;
                         }
                     }
@@ -135,6 +164,14 @@ export class ProtyleManager {
             if (target.closest('.history__side, .history__list, .history__repo')) {
                 this.plugin.eventHandlers.scheduleHistoryUpdate();
             }
+            
+            // 集市页面点击 - 点击卡片时触发
+            if (target.closest('.b3-card') || target.closest('#configBazaarReadme')) {
+                // 延迟检查，等待 README 内容加载
+                setTimeout(() => {
+                    this.checkProtyles();
+                }, 100);
+            }
         };
         
         document.body.addEventListener('click', this.clickDelegationHandler);
@@ -158,7 +195,7 @@ export class ProtyleManager {
      */
     checkProtyles(): void {
         const candidates = Array.from(document.querySelectorAll(
-            ".protyle, .search__preview, .search__doc, .history__text, .history__text .protyle, [data-type='docPanel'].history__text"
+            ".protyle, .search__preview, .search__doc, .history__text, .history__text .protyle, [data-type='docPanel'].history__text, #configBazaarReadme, .config-bazaar__readme, .config-bazaar__panel, .item__readme"
         ));
         const hostSet = new Set<HTMLElement>();
         candidates.forEach((candidate) => {
@@ -169,16 +206,45 @@ export class ProtyleManager {
         const protyles = Array.from(hostSet);
         
         protyles.forEach((p: HTMLElement) => {
-            const content = p.querySelector(".protyle-content") || p.querySelector(".protyle-wysiwyg");
+            const content = p.querySelector(".protyle-content") || 
+                           p.querySelector(".protyle-wysiwyg") ||
+                           p.querySelector(".item__readme") ||
+                           p.querySelector(".b3-typography");
             if (!content) return;
             
             let docId = DocIdResolver.getDocIdFromProtyleElement(p);
             if (!docId && isHistoryHost(p)) {
                 docId = "history";
             }
+            if (!docId && isBazaarHost(p)) {
+                docId = "bazaar";
+            }
             if (!docId) return;
             
-            if (!this.plugin.tocInstances.has(p)) {
+            // 检查 TOC 实例是否有效（检查容器内是否有 .floating-toc 元素）
+            const existingToc = this.plugin.tocInstances.get(p);
+            let hasValidTocDom = false;
+            
+            if (existingToc) {
+                // 对于集市场景，检查 body 中的容器
+                if (isBazaarHost(p)) {
+                    const bazaarContainer = document.querySelector(
+                        '.siyuan-floating-toc-plugin-container[data-bazaar="true"]'
+                    );
+                    hasValidTocDom = !!(bazaarContainer?.querySelector('.floating-toc'));
+                } else {
+                    // 对于普通文档，检查 protyle 内的容器
+                    const container = p.querySelector('.siyuan-floating-toc-plugin-container');
+                    hasValidTocDom = !!(container?.querySelector('.floating-toc'));
+                }
+            }
+            
+            if (!existingToc || !hasValidTocDom) {
+                // 清理无效的实例记录
+                if (existingToc) {
+                    this.plugin.tocInstances.delete(p);
+                    this.plugin.tocDocIds.delete(p);
+                }
                 this.plugin.createToc(p, docId);
             } else {
                 const lastDocId = this.plugin.tocDocIds.get(p);
@@ -189,24 +255,60 @@ export class ProtyleManager {
             }
         });
 
-        // 清理已移除的 protyle 实例
+        // 清理已移除的 protyle 实例或被集市面板覆盖的 TOC
         for (const [p, toc] of this.plugin.tocInstances.entries()) {
-            if (!document.contains(p)) {
+            if (!document.contains(p) || isCoveredByBazaar(p) || isAiOrChatPanel(p)) {
                 toc.$destroy();
                 this.plugin.tocInstances.delete(p);
                 this.plugin.tocDocIds.delete(p);
             }
         }
+        
+        // 清理孤立的集市容器
+        document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach(container => {
+            const host = (container as any)._tocHost;
+            if (!host || !document.contains(host)) {
+                const toc = this.plugin.tocInstances.get(host);
+                if (toc) {
+                    toc.$destroy();
+                    this.plugin.tocInstances.delete(host);
+                    this.plugin.tocDocIds.delete(host);
+                }
+                container.remove();
+            }
+        });
     }
 
     /**
      * 创建 TOC 实例
      */
     createToc(protyleElement: HTMLElement, docId: string): void {
-        // 创建容器
+        const isBazaar = isBazaarHost(protyleElement);
+        
+        // 如果是集市场景，先清理所有旧的集市容器
+        if (isBazaar) {
+            document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach(container => {
+                const host = (container as any)._tocHost;
+                const toc = this.plugin.tocInstances.get(host);
+                if (toc) {
+                    toc.$destroy();
+                    this.plugin.tocInstances.delete(host);
+                    this.plugin.tocDocIds.delete(host);
+                }
+                container.remove();
+            });
+        }
+        
         const container = document.createElement("div");
         container.className = "siyuan-floating-toc-plugin-container";
-        protyleElement.appendChild(container);
+        
+        if (isBazaar) {
+            container.dataset.bazaar = "true";
+            (container as any)._tocHost = protyleElement;
+            document.body.appendChild(container);
+        } else {
+            protyleElement.appendChild(container);
+        }
 
         const config = this.plugin.data["config.json"] || {};
         const dockSide = (config.dockSide === "left" || config.dockSide === "right") ? config.dockSide : "right";
@@ -224,8 +326,11 @@ export class ProtyleManager {
                 dockSide: dockSide,
                 followFocus: followFocus,
                 adaptiveHeight: adaptiveHeight,
+                overlayMode: config.overlayMode === true,
+                smoothScroll: config.smoothScroll !== false,
                 miniTocWidth: miniTocWidth,
-                toolbarConfig: toolbarConfig
+                toolbarConfig: toolbarConfig,
+                isBazaar: isBazaar
             }
         });
         
@@ -303,5 +408,10 @@ export class ProtyleManager {
         });
         this.plugin.tocInstances.clear();
         this.plugin.tocDocIds.clear();
+        
+        // 清理所有集市容器
+        document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach(container => {
+            container.remove();
+        });
     }
 }

@@ -17,6 +17,8 @@ export interface PluginConfig {
     followFocus: boolean;
     miniTocWidth: number;
     adaptiveHeight: boolean;
+    overlayMode?: boolean;
+    smoothScroll?: boolean;
     toolbarConfig: ToolbarAction[];
     customCss?: string;
     fullscreenConfig: FullscreenConfig;
@@ -287,7 +289,10 @@ export const DEFAULT_CONFIG: PluginConfig = {
     followFocus: true,
     miniTocWidth: 32,
     adaptiveHeight: true,
+    overlayMode: false,
+    smoothScroll: true,
     toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
+    customCss: "",
     fullscreenConfig: {
         enableFullscreenHelper: true,
         enableMermaid: true,
