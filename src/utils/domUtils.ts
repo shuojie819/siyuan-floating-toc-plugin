@@ -42,6 +42,10 @@ export function isSettingsPanel(element: HTMLElement): boolean {
  * @returns 主机元素或 null
  */
 export function getTocHostElement(candidate: HTMLElement): HTMLElement | null {
+    // 双保险：智能体（Agent）对话框内的 .protyle（AI 回复消息 / 输入框 composer）直接排除，
+    // 不再作为 TOC 宿主。比仅依赖 shouldShowToc 更稳健，且普通文档 .protyle 不在任何 AI 容器内，
+    // closest 不会命中，不受影响；搜索/历史/集市等既有逻辑也不受影响。
+    if (isAiOrChatPanel(candidate)) return null;
     if (candidate.id === "configBazaarReadme") return candidate;
     if (candidate.classList.contains("config-bazaar__readme")) return candidate;
     if (candidate.classList.contains("config-bazaar__panel")) return candidate;
@@ -188,7 +192,13 @@ export function isAiOrChatPanel(element: HTMLElement): boolean {
     return !!element.closest(
         '[data-type="sidebar-ai"], .ai__chat, [data-type="ai-chat"], .b3-chat, ' +
         '[data-type="chat"], .protyle-ai, [data-type="agent"], .agent-panel, ' +
-        '.sidebar-ai, [data-type="sidebar-chat"]'
+        '.sidebar-ai, [data-type="sidebar-chat"], ' +
+        // 思源内置「智能体（Agent）」对话框容器（实锤自官方源码 app/src/layout/dock/agent/AgentChat.ts）
+        // 其最外层 dock 面板 = .sy__agentChat，内层总包裹 = .agent-chat（同时包住消息区与输入框 composer）。
+        // 智能体内 AI 回复消息与输入框（composer 用 new Protyle 渲染）都会生成 .protyle，
+        // 必须整框排除，否则悬浮大纲（含回到顶部/回到底部/刷新 scroll-toolbar）会被误挂到智能体里。
+        // .agent-chat__messages / .agent-chat__msg 作为补充兜底，覆盖局部 DOM 片段。
+        '.sy__agentChat, .agent-chat, .agent-chat__messages, .agent-chat__msg'
     );
 }
 

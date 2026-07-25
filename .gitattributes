@@ -1,0 +1,11 @@
+# 统一行尾符，避免 LF/CRLF 在不同机器间转换造成无意义的整行 diff
+# GitHub Desktop 的 "LF → CRLF" 提示从此不再出现
+* text=auto eol=lf
+
+# 明确二进制文件，不对其做行尾/文本转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.zip binary
