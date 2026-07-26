@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.24] - 2026-07-26
+
+### Fixed
+- **Dynamic-loaded heading navigation (Issue #34, normal documents)**: Rewrote TOC entry click navigation to use SiYuan's official `siyuan://blocks/{id}` protocol chain (`window.top.openFileByURL` → `openFileById`) with `CB_GET_CONTEXT` action, enabling precise jumps to headings outside the virtual-scroll viewport that are not yet loaded. Removed the `window.open` browser-external-protocol popup.
+- **Folded heading expand**: Folded headings now append `?focus=1` to trigger SiYuan's zoomIn expand before locating.
+- **Fallback & memo**: Falls back to `plugin.openTab` with `cb-get-context` when `openFileByURL` is unavailable; original `window.open` implementation kept as a comment memo only.
+
+### Changed
+- **Search preview is DOM-only (reverted)**: In the global-search preview area (`.search__preview` / `dialog-search`), TOC clicks now only scroll within the already-rendered DOM and do NOT jump to headings outside the virtual-scroll range / folded ancestors. Reason: the preview is an isolated read-only Protyle instance; SiYuan exposes no plugin API to make that protyle load an arbitrary block id on demand (`onGet` is internal, `protyle.reload()` only reloads the current doc), and `openFileByURL` opens the main editor rather than the preview. This is a SiYuan plugin-architecture hard boundary; navigation in the preview area is intentionally limited to DOM-only.
+
 ## [0.1.23] - 2026-07-25
 
 ### Fixed

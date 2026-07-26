@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
+  import { handleHeadingClick } from "./utils/scrollOrNavigate";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -930,58 +931,6 @@
   };
 
   /**
-   * 使用思源官方 API 跳转到指定块
-   * 参考思源本体 Outline.ts 实现
-   */
-  /**
-   * 判断当前是否处于 Web / Docker(浏览器) 环境
-   * Web 环境下不应使用 siyuan:// 协议兜底，否则会触发操作系统打开本地客户端
-   */
-  const isWebEnvironment = (): boolean => {
-    const s = (window as any).siyuan;
-    if (s?.config?.system?.container) {
-      return s.config.system.container === 'web';
-    }
-    return !/electron/i.test(navigator.userAgent) && /^(http|https):/.test(location.protocol);
-  };
-
-  /**
-   * 使用思源官方 API 跳转到指定块
-   * 参考思源本体 Outline.ts 实现
-   */
-  const navigateToBlock = async (blockId: string, isFolded = false) => {
-    // console.log('DEBUG: navigateToBlock - blockId:', blockId);
-    // 使用 plugin.openTab 进行跳转，这是思源官方插件 API
-    // 会自动处理动态加载、聚焦模式等场景
-    if (plugin && typeof plugin.openTab === 'function') {
-      try {
-        // console.log('DEBUG: navigateToBlock - using plugin.openTab');
-        await plugin.openTab({
-          app: plugin.app,
-          doc: {
-            id: blockId,
-            // 折叠状态使用 cb-get-focus 以展开并滚动到目标；
-            // 非折叠状态使用 cb-get-hl 仅高亮，避免改变聚焦视图
-            action: isFolded ? ["cb-get-focus", "cb-get-context"] : ["cb-get-hl", "cb-get-context"],
-            zoomIn: false  // 明确禁用缩放/聚焦
-          }
-        });
-        return true;
-      } catch (e) {
-        console.warn("Floating TOC: openTab failed, falling back to protocol", e);
-      }
-    }
-    
-    // 回退方案：使用 siyuan 协议
-    // 仅在非 Web 环境执行，避免浏览器/Web(docker) 端唤醒本地客户端 (Issue #19)
-    // console.log('DEBUG: navigateToBlock - using siyuan:// protocol');
-    if (!isWebEnvironment()) {
-      window.open(`siyuan://blocks/${blockId}`, "_blank");
-    }
-    return true;
-  };
-
-  /**
    * 在 DOM 中滚动到目标块并高亮
    */
   const scrollToBlockInDom = (targetBlock: Element) => {
@@ -1101,28 +1050,19 @@
       selection.removeAllRanges();
     }
 
-    // 数据库分组 / 特殊模式（历史、搜索预览）→ 直接 DOM 滚动
-    if (heading.subType === "av-group" || isSpecialMode()) {
-      const targetBlock = findTargetBlockInDom(heading);
-      if (targetBlock) scrollToBlockInDom(targetBlock);
-      return;
-    }
-
-    // 优先尝试在 DOM 中直接定位并滚动（健壮，不依赖 checkBlockFold API）
-    const targetBlock = findTargetBlockInDom(heading);
-    if (targetBlock) {
-      scrollToBlockInDom(targetBlock);
-      return;
-    }
-
-    // DOM 中找不到（祖先折叠 / 动态加载范围外 / 非当前文档）→ 使用官方 API 跳转
-    let isFolded = false;
-    try {
-      isFolded = await checkBlockFold(heading.id);
-    } catch (e) {
-      console.warn("Floating TOC: checkBlockFold failed", e);
-    }
-    await navigateToBlock(heading.id, isFolded);
+    // 统一跳转分支（issue #34 搜索预览分支 · 已回退为 DOM-only）：
+    // 数据库分组 / 历史记录 / 集市页面 / 搜索预览 仅做 DOM 滚动（搜索预览为只读预览表面，
+    // 标题已渲染进 DOM，且 navigateToBlock 会驱动主编辑器跳转、打断预览，故不回退应用内跳转）；
+    // 其余（普通文档）DOM 中找不到时再 checkBlockFold + navigateToBlock（动态加载外块可跳转）。
+    // 核心逻辑提取至 utils/scrollOrNavigate.handleHeadingClick，便于单测覆盖搜索预览分支。
+    await handleHeadingClick(heading, plugin, {
+      findTargetBlockInDom,
+      scrollToBlockInDom,
+      checkBlockFold,
+      isHistoryTarget,
+      isBazaarTarget,
+      isSearchTarget,
+    });
   };
 
 
