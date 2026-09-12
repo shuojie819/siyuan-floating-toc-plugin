@@ -2,7 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
-  import { calculateTocPosition, computeLeftDockPadding } from "./utils/domUtils";
+  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown } from "./utils/domUtils";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -226,12 +226,14 @@
           return;
       }
       
-      const isPanelVisible = targetElement.classList.contains('config-bazaar__readme--show');
+      // 兼容 SiYuan ≤3.8.2 的 config-bazaar__readme--show 与 3.8.3+ 的 config__view--show
+      const isPanelVisible = isBazaarPanelShown(targetElement);
       const isPanelInDom = document.contains(targetElement);
       
-      if (!isPanelVisible || !isPanelInDom) {
-          visible = false;
-      }
+      // 必须双向同步：原实现只在「不可见」时置 false、从不置回 true，
+      // 而 #configBazaarReadme 是常驻元素（只有 class 在切换），
+      // 会导致「进入详情 → 返回列表 → 再进入详情」后再也看不到大纲。
+      visible = isPanelVisible && isPanelInDom;
   };
 
   const updateBazaarPosition = () => {
