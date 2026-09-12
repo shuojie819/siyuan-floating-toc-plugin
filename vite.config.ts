@@ -5,6 +5,13 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import zipPack from "vite-plugin-zip-pack";
 
 export default defineConfig({
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: "modern-compiler",
+      },
+    },
+  },
   plugins: [
     svelte({
       preprocess: vitePreprocess(),
@@ -22,6 +29,11 @@ export default defineConfig({
       inDir: './dist',
       outDir: './',
       outFileName: 'siyuan-floating-toc-plugin.zip'
+    }),
+    zipPack({
+      inDir: './dist',
+      outDir: './',
+      outFileName: 'package.zip'
     })
   ],
   build: {
