@@ -422,6 +422,7 @@ export class ProtyleManager {
                 overlayMode: config.overlayMode === true,
                 smoothScroll: config.smoothScroll !== false,
                 miniTocWidth: miniTocWidth,
+                tocGap: config.tocGap ?? 10,
                 toolbarConfig: toolbarConfig,
                 isBazaar: isBazaar
             }

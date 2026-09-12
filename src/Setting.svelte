@@ -2,35 +2,11 @@
     import { onMount } from 'svelte';
     import SettingItem from './components/SettingItem.svelte';
     import type { PluginConfig, ToolbarAction, FullscreenConfig } from './types';
+    // 单一来源：默认配置统一定义在 ./types，避免与本地副本不一致（Issue #9 / 收敛默认值）
+    import { DEFAULT_CONFIG } from './types';
 
     export let plugin: any;
-    
-    // 默认配置
-    const DEFAULT_CONFIG: PluginConfig = {
-        dockSide: "right",
-        isPinned: false,
-        tocWidth: 250,
-        followFocus: true,
-        miniTocWidth: 32,
-        adaptiveHeight: false,
-        overlayMode: false,
-        smoothScroll: true,
-        toolbarConfig: ["scrollToTop", "scrollToBottom", "refreshDoc"],
-        customCss: "",
-        fullscreenConfig: {
-            enableFullscreenHelper: true,
-            enableMermaid: true,
-            enableECharts: true,
-            enableSheetMusic: true,
-            enableGraphviz: true,
-            enableFlowchart: true,
-            enableIFrame: true,
-            enableDoubleClick: true,
-            enableRightClickExit: true,
-            buttonPosition: "top-left"
-        }
-    };
-    
+
     let config: PluginConfig = { ...DEFAULT_CONFIG };
 
     let activeTab = 'outline';
@@ -90,6 +66,7 @@
                 overlayMode: config.overlayMode,
                 smoothScroll: config.smoothScroll,
                 miniTocWidth: config.miniTocWidth,
+                tocGap: config.tocGap,
                 toolbarConfig: config.toolbarConfig
             });
             
@@ -201,6 +178,15 @@
                 value={config.miniTocWidth}
                 slider={{ min: 20, max: 50, step: 1 }}
                 on:change={(e) => handleSettingChange('miniTocWidth', e.detail)}
+            />
+
+            <SettingItem 
+                type="slider" 
+                title={plugin.i18n.tocGap} 
+                description={plugin.i18n.tocGapDesc}
+                value={config.tocGap}
+                slider={{ min: 0, max: 120, step: 2 }}
+                on:change={(e) => handleSettingChange('tocGap', e.detail)}
             />
         {/if}
         
