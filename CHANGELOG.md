@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.27] - 2026-09-12
+
+### Added
+- **Configurable appearance of the floating outline (Issue #36, part ③)** — three new settings under **Settings → 大纲功能**:
+  - **`tocZIndex`** (default **20**, range 1–999) — stacking order. Raise it when other panels or plugins cover the outline; lower it when the outline covers other buttons.
+  - **`tocTopOffset`** (default **80**, range 0–400) — minimum distance from the window top. Raise it to keep the outline clear of the document title / cover image and the top toolbar buttons.
+  - **`tocEdgeMargin`** (default **14**, range 0–80) — whitespace between the outline and the document / window edge.
+
+  All three defaults reproduce the previously hard-coded values exactly, so nothing changes unless you move a slider.
+
+### Changed
+- **Refactor for testability**: `calculateTocPosition()` was lifted out of the `FloatingToc` component closure into `utils/domUtils.ts` as a pure function — its closure dependencies (`isExpanded` / `dockSide` / `isPinned` / `miniTocWidth`) and the `EDGE_MARGIN` / `resizeHandleOffset` constants are now parameters. The logic is a line-by-line move (verified against the removed code), so positioning behaviour is identical; it is now covered by unit tests.
+
+### Tests
+- Added `src/__tests__/tocPosition.spec.ts` (7 cases): expanded × left/right, collapsed × left/right, pinned forcing padding, configurable `edgeMargin`, plus a default-value contract (`20 / 80 / 14`). Mutation-checked so each expectation can actually fail.
+
 ## [0.1.26] - 2026-09-12
 
 ### Fixed

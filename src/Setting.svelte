@@ -66,6 +66,9 @@
                 overlayMode: config.overlayMode,
                 smoothScroll: config.smoothScroll,
                 miniTocWidth: config.miniTocWidth,
+                tocZIndex: config.tocZIndex,
+                tocTopOffset: config.tocTopOffset,
+                tocEdgeMargin: config.tocEdgeMargin,
                 tocGap: config.tocGap,
                 toolbarConfig: config.toolbarConfig
             });
@@ -187,6 +190,33 @@
                 value={config.tocGap}
                 slider={{ min: 0, max: 120, step: 2 }}
                 on:change={(e) => handleSettingChange('tocGap', e.detail)}
+            />
+
+            <SettingItem 
+                type="slider" 
+                title={plugin.i18n.tocZIndex} 
+                description={plugin.i18n.tocZIndexDesc}
+                value={config.tocZIndex}
+                slider={{ min: 1, max: 999, step: 1 }}
+                on:change={(e) => handleSettingChange('tocZIndex', e.detail)}
+            />
+
+            <SettingItem 
+                type="slider" 
+                title={plugin.i18n.tocTopOffset} 
+                description={plugin.i18n.tocTopOffsetDesc}
+                value={config.tocTopOffset}
+                slider={{ min: 0, max: 400, step: 10 }}
+                on:change={(e) => handleSettingChange('tocTopOffset', e.detail)}
+            />
+
+            <SettingItem 
+                type="slider" 
+                title={plugin.i18n.tocEdgeMargin} 
+                description={plugin.i18n.tocEdgeMarginDesc}
+                value={config.tocEdgeMargin}
+                slider={{ min: 0, max: 80, step: 2 }}
+                on:change={(e) => handleSettingChange('tocEdgeMargin', e.detail)}
             />
         {/if}
         

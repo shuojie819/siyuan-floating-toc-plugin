@@ -2,7 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
-  import { computeLeftDockPadding } from "./utils/domUtils";
+  import { calculateTocPosition, computeLeftDockPadding } from "./utils/domUtils";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -12,6 +12,12 @@
   export let followFocus: boolean = true;
   export let adaptiveHeight: boolean = false;
   export let miniTocWidth: number = 32;
+  // 悬浮大纲的显示层级（z-index），可通过设置页配置
+  export let tocZIndex: number = 20;
+  // 悬浮大纲距窗口顶部的最小距离（px），可通过设置页配置
+  export let tocTopOffset: number = 80;
+  // 悬浮大纲与文档/窗口边缘之间的留白（px），可通过设置页配置
+  export let tocEdgeMargin: number = 14;
   // 固定模式下大纲与正文的间距（px），可通过设置页配置（Issue #9）
   export let tocGap: number = 10;
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
@@ -80,44 +86,7 @@
       return !!(window as any).siyuan?.config?.editor?.fullWidth;
   };
 
-  // 计算 TOC 位置
-  const calculateTocPosition = (
-      rect: DOMRect, 
-      wRect: DOMRect | null, 
-      effectiveTocWidth: number,
-      currentPaddingLeft: number,
-      currentPaddingRight: number
-  ): { left: number; paddingNeeded: boolean } => {
-      const resizeHandleOffset = 6;
-      const EDGE_MARGIN = 14;
-      
-      if (isExpanded && wRect) {
-          if (dockSide === 'left') {
-              const naturalTextLeft = wRect.left - (currentPaddingLeft / 2);
-              const idealLeft = naturalTextLeft - effectiveTocWidth;
-              const minLeft = rect.left + resizeHandleOffset;
-              const left = Math.max(minLeft, idealLeft);
-              const paddingNeeded = isPinned || (left + effectiveTocWidth > naturalTextLeft - 42);
-              return { left, paddingNeeded };
-          } else {
-              const naturalTextRight = wRect.right + (currentPaddingRight / 2);
-              const idealLeft = naturalTextRight;
-              const maxLeft = rect.right - effectiveTocWidth - resizeHandleOffset;
-              const left = Math.min(maxLeft, idealLeft);
-              const paddingNeeded = left < naturalTextRight;
-              return { left, paddingNeeded };
-          }
-      } else {
-          if (dockSide === 'left') {
-              return { left: rect.left + EDGE_MARGIN, paddingNeeded: true };
-          } else {
-              return { 
-                  left: rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - EDGE_MARGIN, 
-                  paddingNeeded: false 
-              };
-          }
-      }
-  };
+  // 计算 TOC 位置（已抽取为 utils/domUtils 的纯函数 calculateTocPosition，便于单测）
 
   const updatePosition = () => {
       if (!targetElement || !document.contains(targetElement)) return;
@@ -135,23 +104,27 @@
       const rect = content.getBoundingClientRect();
       const wRect = wysiwyg?.getBoundingClientRect() || null;
 
-      const top = Math.max(rect.top, 80);
+      const top = Math.max(rect.top, tocTopOffset);
       const maxHeight = Math.min(rect.height, window.innerHeight - top - 20);
       const effectiveTocWidth = getEffectiveTocWidth();
       
       const currentPaddingLeft = parseFloat(content.style.paddingLeft) || 0;
       const currentPaddingRight = parseFloat(content.style.paddingRight) || 0;
       
-      const { left, paddingNeeded } = calculateTocPosition(
-          rect, wRect, effectiveTocWidth, currentPaddingLeft, currentPaddingRight
-      );
+      const { left, paddingNeeded } = calculateTocPosition({
+          rect, wRect, effectiveTocWidth,
+          miniTocWidth,
+          currentPaddingLeft, currentPaddingRight,
+          isExpanded, isPinned, dockSide,
+          edgeMargin: tocEdgeMargin
+      });
       
       const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
       const heightStyle = adaptiveHeight 
           ? `max-height: ${maxHeight}px; height: auto;` 
           : `height: ${maxHeight}px;`;
 
-      pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
+      pinnedStyle = `top: ${top}px; left: ${left}px; z-index: ${tocZIndex}; ${heightStyle} ${widthStyle}`;
       
       // 更新编辑器内边距
       if (overlayMode) {
@@ -271,7 +244,7 @@
       if (!containerElement) return;
       
       const rect = containerElement.getBoundingClientRect();
-      const top = Math.max(rect.top, 80);
+      const top = Math.max(rect.top, tocTopOffset);
       const maxHeight = Math.min(rect.height, window.innerHeight - top - 20);
       const effectiveTocWidth = getEffectiveTocWidth();
       
@@ -298,7 +271,7 @@
       const widthStyle = isExpanded ? `width: ${effectiveTocWidth}px;` : `width: ${miniTocWidth}px;`;
       const heightStyle = `height: ${maxHeight}px;`;
 
-      pinnedStyle = `top: ${top}px; left: ${left}px; ${heightStyle} ${widthStyle}`;
+      pinnedStyle = `top: ${top}px; left: ${left}px; z-index: ${tocZIndex}; ${heightStyle} ${widthStyle}`;
       
       // 启动内容观察者
       startBazaarContentObserver();
