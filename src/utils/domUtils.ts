@@ -157,6 +157,9 @@ export function isBreadcrumbElement(element: HTMLElement): boolean {
  */
 export function isBacklinkArea(element: HTMLElement): boolean {
     if (element.closest('.sy__backlink')) return true;
+    // 思源新版「底部反链面板」的 class 是 sy__backlink--bottom（不含 sy__backlink token），
+    // 必须单独判断，否则面板内引用文档的 .protyle 会被误挂悬浮大纲
+    if (element.closest('.sy__backlink--bottom')) return true;
     if (element.closest('.backlinkList')) return true;
     if (element.closest('.backlinkMList')) return true;
     if (element.closest('[data-defid]')) return true;
@@ -209,10 +212,37 @@ export function isGraphView(element: HTMLElement): boolean {
     return !!element.closest('[data-type="graph"], .graph, .fullscreen-graph, [data-type="graphView"], .relation-graph');
 }
 
+/**
+ * 判断元素是否位于数据库（属性视图）的编辑上下文内。
+ * 思源 3.8.3 起数据库文本字段支持块元素/行级元素，单元格/弹层内会出现可编辑的 protyle，
+ * 这类迷你编辑器不应挂载悬浮大纲。
+ * 注意：普通文档的 .protyle 只是「包含」数据库块（.av 是其后代），
+ * closest 只向上查找，因此不会误伤正常文档。
+ */
+export function isDatabaseEditorContext(element: HTMLElement): boolean {
+    return !!element.closest(
+        '.av__panel, .av__cell, .av__row, .av__body, .av__container, [data-type="NodeAttributeView"]'
+    );
+}
+
+/**
+ * 判断元素是否位于思源「轻量编辑器片段（protyle-lite）」内。
+ * 思源 3.8.3 起数据库文本字段支持富文本/块元素编辑，单元格内使用 protyle-lite；
+ * 该类迷你编辑器（数据库单元格、智能体输入框等）不是完整文档，不应挂载悬浮大纲。
+ * 实锤类名/属性：.protyle-lite-fragment、[data-protyle-lite-render]
+ */
+export function isLiteEditorFragment(element: HTMLElement): boolean {
+    return !!element.closest('.protyle-lite-fragment, [data-protyle-lite-render]');
+}
+
 export function shouldShowToc(protyleElement: HTMLElement): boolean {
     // 设置面板的非集市区域不挂 TOC（集市配置页 README 仍显示大纲）
     if (isSettingsPanel(protyleElement)) return false;
     if (isBacklinkArea(protyleElement)) return false;
+    // 数据库（属性视图）编辑上下文不挂 TOC（数据库文本字段的富文本/块编辑器）
+    if (isDatabaseEditorContext(protyleElement)) return false;
+    // 轻量编辑器片段（数据库单元格富文本、智能体输入框等）不挂 TOC
+    if (isLiteEditorFragment(protyleElement)) return false;
     if (isAiOrChatPanel(protyleElement)) return false;
     if (isGraphView(protyleElement)) return false;
     if (protyleElement.closest('.protyle-wysiwyg__embed')) return false;
