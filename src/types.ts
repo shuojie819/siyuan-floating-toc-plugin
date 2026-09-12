@@ -16,6 +16,12 @@ export interface PluginConfig {
     tocWidth: number;
     followFocus: boolean;
     miniTocWidth: number;
+    // 悬浮大纲的显示层级（z-index）
+    tocZIndex: number;
+    // 悬浮大纲距窗口顶部的最小距离（px）
+    tocTopOffset: number;
+    // 悬浮大纲与文档/窗口边缘之间的留白（px）
+    tocEdgeMargin: number;
     // 固定模式下大纲与正文的间距（px）
     tocGap: number;
     adaptiveHeight: boolean;
@@ -290,6 +296,9 @@ export const DEFAULT_CONFIG: PluginConfig = {
     tocWidth: 250,
     followFocus: true,
     miniTocWidth: 32,
+    tocZIndex: 20,
+    tocTopOffset: 80,
+    tocEdgeMargin: 14,
     tocGap: 10,
     adaptiveHeight: true,
     overlayMode: false,

@@ -255,6 +255,72 @@ export function computeLeftDockPadding(width: number, tocGap: number, pinnedNeed
     return width + tocGap + (pinnedNeeded ? 32 : 0);
 }
 
+/**
+ * calculateTocPosition 的参数集合。
+ * 由 FloatingToc.svelte 的 calculateTocPosition 抽出（逻辑不变），
+ * 仅把原先的闭包依赖（isExpanded / isPinned / dockSide / miniTocWidth）与两个常量参数化，
+ * 以便单测覆盖层级/位置相关改动。
+ */
+export interface TocPositionParams {
+    /** .protyle-content 的矩形 */
+    rect: DOMRect;
+    /** .protyle-wysiwyg 的矩形（可能为空） */
+    wRect: DOMRect | null;
+    effectiveTocWidth: number;
+    miniTocWidth: number;
+    currentPaddingLeft: number;
+    currentPaddingRight: number;
+    isExpanded: boolean;
+    isPinned: boolean;
+    dockSide: 'left' | 'right';
+    /** 边缘留白，默认 14（历史上是常量 EDGE_MARGIN） */
+    edgeMargin?: number;
+    /** 拖拽手柄避让，默认 6 */
+    resizeHandleOffset?: number;
+}
+
+/**
+ * 计算悬浮大纲的 left 与是否需要给正文加内边距。
+ * 由 FloatingToc.svelte 的 calculateTocPosition 原样抽出（逻辑不变），仅把闭包依赖与常量参数化，
+ * 以便单测覆盖 #36 的层级/位置相关改动。默认 edgeMargin=14 / resizeHandleOffset=6 时结果与历史完全一致。
+ */
+export function calculateTocPosition(params: TocPositionParams): { left: number; paddingNeeded: boolean } {
+    const {
+        rect, wRect, effectiveTocWidth, miniTocWidth,
+        currentPaddingLeft, currentPaddingRight,
+        isExpanded, isPinned, dockSide,
+        edgeMargin = 14,
+        resizeHandleOffset = 6
+    } = params;
+
+    if (isExpanded && wRect) {
+        if (dockSide === 'left') {
+            const naturalTextLeft = wRect.left - (currentPaddingLeft / 2);
+            const idealLeft = naturalTextLeft - effectiveTocWidth;
+            const minLeft = rect.left + resizeHandleOffset;
+            const left = Math.max(minLeft, idealLeft);
+            const paddingNeeded = isPinned || (left + effectiveTocWidth > naturalTextLeft - 42);
+            return { left, paddingNeeded };
+        } else {
+            const naturalTextRight = wRect.right + (currentPaddingRight / 2);
+            const idealLeft = naturalTextRight;
+            const maxLeft = rect.right - effectiveTocWidth - resizeHandleOffset;
+            const left = Math.min(maxLeft, idealLeft);
+            const paddingNeeded = left < naturalTextRight;
+            return { left, paddingNeeded };
+        }
+    } else {
+        if (dockSide === 'left') {
+            return { left: rect.left + edgeMargin, paddingNeeded: true };
+        } else {
+            return {
+                left: rect.right - (isExpanded ? effectiveTocWidth : miniTocWidth) - edgeMargin,
+                paddingNeeded: false
+            };
+        }
+    }
+}
+
 export function shouldShowToc(protyleElement: HTMLElement): boolean {
     // 设置面板的非集市区域不挂 TOC（集市配置页 README 仍显示大纲）
     if (isSettingsPanel(protyleElement)) return false;
