@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.25] - 2026-09-12
+
+### Fixed
+- **Bottom backlink panel (Issue #35)**: The floating TOC no longer shows up inside SiYuan's new bottom backlink panel. That panel's element only carries the `sy__backlink--bottom` class token (it does **not** include `sy__backlink`), so `isBacklinkArea()` missed it and mounted a TOC onto the referenced document's `.protyle`.
+- **Database rich-text cell editor (Issue #37)**: The floating TOC no longer appears while editing a database (attribute view) text column. Since SiYuan v3.8.3 a database text field can hold block/inline elements, so an embedded mini editor is rendered inside the cell; it was picked up by the global `.protyle` scan and treated as a document host. Added `isDatabaseEditorContext()` (`.av__panel` / `.av__cell` / `.av__row` / `.av__body` / `.av__container` / `[data-type="NodeAttributeView"]`) and `isLiteEditorFragment()` (`.protyle-lite-fragment` / `[data-protyle-lite-render]`) exclusions to `shouldShowToc()`.
+
+### Tests
+- Added `src/__tests__/domUtils.dbAndBacklink.spec.ts` (9 cases) covering the bottom backlink panel, `.av__cell` / `.av__panel` / `.av[data-type="NodeAttributeView"]` / `protyle-lite` fragment, plus regression cases proving that normal documents which merely *contain* a database block or a lite fragment are **not** affected. Each guard was mutation-checked to be individually covered.
+
 ## [0.1.24] - 2026-07-26
 
 ### Fixed
