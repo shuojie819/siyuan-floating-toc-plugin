@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.28] - 2026-09-13
+
+### Fixed
+- **The floating outline no longer disappears inside the SiYuan bazaar** (follow-up to #36): SiYuan 3.8.3+ rewrote the bazaar UI and renamed the "detail view is open" class from `config-bazaar__readme--show` to **`config__view--show`**. The plugin's visibility check only knew the old name, so `isPanelVisible` was permanently `false` and the Svelte component mounted into an **empty container** and never rendered. Verified in DevTools on 3.8.4-alpha.6: the container existed (`position: fixed`, `z-index: 999`) but had no `.floating-toc` child, and the bazaar dialog's z-index was only `16` — so it was **not** a stacking issue. Both class names are now accepted.
+- **Returning to a package detail page now restores the outline**: `checkBazaarVisibility()` previously only ever set `visible = false` and never back to `true`. Since `#configBazaarReadme` is a persistent element (only its class toggles), going *detail → list → detail* left the outline permanently hidden. The check now syncs `visible` symmetrically with the panel's state.
+
+### Tests
+- Added `src/__tests__/bazaarVisibility.spec.ts` (6 cases): both class names, the not-yet-expanded state (`config__view` without `--show`), a look-alike class, self-only semantics, and real `classList.add/remove` transitions. Mutation-checked — removing the new branch reddens 2 cases.
+
 ## [0.1.27] - 2026-09-12
 
 ### Added

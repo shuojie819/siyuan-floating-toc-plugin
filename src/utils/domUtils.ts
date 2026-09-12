@@ -21,6 +21,19 @@ export function isBazaarHost(element: HTMLElement): boolean {
 }
 
 /**
+ * 判断集市（bazaar）详情页当前是否处于「已展开显示」状态。
+ *
+ * 思源 ≤ 3.8.2 用 `config-bazaar__readme--show`；
+ * 思源 3.8.3+ 重写了集市 UI，把该显示类改名为 `config__view--show`
+ * （实测 `#configBazaarReadme` 的 class 为 `config-bazaar__readme config__view--show`）。
+ * 两个都兼容，避免再次因思源改类名而失效。
+ */
+export function isBazaarPanelShown(element: HTMLElement): boolean {
+    return element.classList.contains('config-bazaar__readme--show')
+        || element.classList.contains('config__view--show');
+}
+
+/**
  * 检查元素是否位于思源设置面板的非集市区域
  * 注意：设置面板里的集市配置页（README）仍应显示悬浮大纲，因此集市部分不算设置面板
  */
