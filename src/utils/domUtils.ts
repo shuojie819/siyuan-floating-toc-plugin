@@ -235,6 +235,26 @@ export function isLiteEditorFragment(element: HTMLElement): boolean {
     return !!element.closest('.protyle-lite-fragment, [data-protyle-lite-render]');
 }
 
+/**
+ * 判断元素是否位于思源「闪卡 / 卡片复习」上下文内。
+ * 闪卡复习视图容器是 .card__main（内部用 Protyle 渲染卡片块，无论是否浮窗/全屏都是它），
+ * 闪卡预览对话框是 #cardPreview；这些都不是文档阅读场景，不应挂载悬浮大纲。
+ */
+export function isFlashcardContext(element: HTMLElement): boolean {
+    return !!element.closest('.card__main, #cardPreview');
+}
+
+/**
+ * 左侧停靠时，正文应让出的像素宽度（Issue #9：间距可配置）。
+ * tocGap 表示「大纲与正文之间的间距」，历史硬编码值为 10。
+ * pinnedNeeded 为真（固定模式且确实需要挤压）时，额外再留 32px ——
+ * 历史实现是硬编码 42，即 10 + 32。
+ * 以 tocGap = 10 调用时，返回值与历史实现完全一致（零行为变化）。
+ */
+export function computeLeftDockPadding(width: number, tocGap: number, pinnedNeeded: boolean): number {
+    return width + tocGap + (pinnedNeeded ? 32 : 0);
+}
+
 export function shouldShowToc(protyleElement: HTMLElement): boolean {
     // 设置面板的非集市区域不挂 TOC（集市配置页 README 仍显示大纲）
     if (isSettingsPanel(protyleElement)) return false;
@@ -243,6 +263,8 @@ export function shouldShowToc(protyleElement: HTMLElement): boolean {
     if (isDatabaseEditorContext(protyleElement)) return false;
     // 轻量编辑器片段（数据库单元格富文本、智能体输入框等）不挂 TOC
     if (isLiteEditorFragment(protyleElement)) return false;
+    // 闪卡 / 卡片复习场景（含浮窗、全屏、卡片预览对话框）不挂 TOC
+    if (isFlashcardContext(protyleElement)) return false;
     if (isAiOrChatPanel(protyleElement)) return false;
     if (isGraphView(protyleElement)) return false;
     if (protyleElement.closest('.protyle-wysiwyg__embed')) return false;

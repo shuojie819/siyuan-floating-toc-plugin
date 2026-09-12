@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.26] - 2026-09-12
+
+### Fixed
+- **Flashcard / card-review scenes (Issue #36)**: The floating TOC no longer appears in SiYuan's flashcard review view, its floating window / fullscreen mode, or the card preview dialog. The review view renders cards inside `.card__main` (via an embedded Protyle) and the preview dialog is `#cardPreview`; the plugin's global `.protyle` scan picked them up and treated them as document hosts. Added an `isFlashcardContext()` exclusion to `shouldShowToc()`. This also resolves the reported *"the outline does not follow when the card is dragged into a floating window"*, because the floating window is the same `.card__main` container.
+
+### Added
+- **Configurable gap between the pinned outline and the content (Issue #9)**: New `tocGap` setting (Settings → 大纲功能, slider 0–120 px, default **10**). It replaces the previously hard-coded editor padding. The default reproduces the old behaviour exactly (`width + 42` when pinned-and-squeezing on the left, otherwise `width + 10`), so nothing changes unless the user moves the slider.
+
+### Changed
+- **Single source of truth for defaults**: Removed the duplicated `DEFAULT_CONFIG` in `Setting.svelte`. The copy had already drifted (`adaptiveHeight` was `false` there vs `true` in `types.ts`, and the settings copy was effectively dead). `Setting.svelte` now imports `DEFAULT_CONFIG` from `types.ts`, so newly added options can no longer go out of sync.
+
+### Tests
+- Added `src/__tests__/domUtils.flashcard.spec.ts` (3 cases) and `src/__tests__/tocPadding.spec.ts` (6 cases). Mutation-checked: removing the flashcard guard reddens 2 cases, changing the `32` constant reddens 1, and changing the default `tocGap` reddens the compatibility case — so the "default == legacy behaviour" contract is now guarded.
+
 ## [0.1.25] - 2026-09-12
 
 ### Fixed

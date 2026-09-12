@@ -2,6 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
+  import { computeLeftDockPadding } from "./utils/domUtils";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -11,6 +12,8 @@
   export let followFocus: boolean = true;
   export let adaptiveHeight: boolean = false;
   export let miniTocWidth: number = 32;
+  // 固定模式下大纲与正文的间距（px），可通过设置页配置（Issue #9）
+  export let tocGap: number = 10;
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
   export let overlayMode = false;
   export let smoothScroll = true;
@@ -160,15 +163,25 @@
               updateEditorPadding(targetElement, 0);
           } else if (isExpanded && wysiwyg) {
               if (isPinned && paddingNeeded) {
-                  const extra = (dockSide === 'left') ? 42 : 0;
-                  updateEditorPadding(targetElement, effectiveTocWidth + extra);
+                  updateEditorPadding(
+                      targetElement,
+                      dockSide === 'left'
+                          ? computeLeftDockPadding(effectiveTocWidth, tocGap, true)
+                          : effectiveTocWidth
+                  );
               } else if (dockSide === 'left') {
-                  updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
+                  updateEditorPadding(
+                      targetElement,
+                      computeLeftDockPadding(isPinned ? effectiveTocWidth : miniTocWidth, tocGap, false)
+                  );
               } else {
                   updateEditorPadding(targetElement, 0);
               }
           } else if (dockSide === 'left') {
-              updateEditorPadding(targetElement, (isPinned ? effectiveTocWidth : miniTocWidth) + 10);
+              updateEditorPadding(
+                  targetElement,
+                  computeLeftDockPadding(isPinned ? effectiveTocWidth : miniTocWidth, tocGap, false)
+              );
           } else {
               updateEditorPadding(targetElement, 0);
           }

@@ -16,6 +16,8 @@ export interface PluginConfig {
     tocWidth: number;
     followFocus: boolean;
     miniTocWidth: number;
+    // 固定模式下大纲与正文的间距（px）
+    tocGap: number;
     adaptiveHeight: boolean;
     overlayMode?: boolean;
     smoothScroll?: boolean;
@@ -288,6 +290,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
     tocWidth: 250,
     followFocus: true,
     miniTocWidth: 32,
+    tocGap: 10,
     adaptiveHeight: true,
     overlayMode: false,
     smoothScroll: true,

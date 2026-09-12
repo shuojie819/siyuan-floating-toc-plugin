@@ -11,6 +11,8 @@
   "adaptiveHeightDesc": "开启后，大纲容器高度将根据内容自动调整，不再强制占满可用高度。",
   "miniTocWidth": "Mini大纲宽度",
   "miniTocWidthDesc": "折叠状态下的大纲条宽度（像素）",
+  "tocGap": "大纲与正文间距",
+  "tocGapDesc": "固定模式下大纲与正文之间的留白（像素）。调小可减少分屏窄窗口下的空白。",
   "toolbarActions": "工具栏功能",
   "toolbarActionsDesc": "选择要在悬浮工具栏中显示的操作。",
   "scrollToTop": "滚动到顶部",
