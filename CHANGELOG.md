@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.29] - 2026-09-13
+
+### Fixed
+- **Bazaar indexing was failing: `icon.png` was not actually a PNG** ([siyuan-note/bazaar#2239](https://github.com/siyuan-note/bazaar/issues/2239)). The repo file `icon.png` was really a **JPEG** (`image/jpeg`) with a `.png` name. The community bazaar's validator now cross-checks a declared image's extension against its real byte content, so it rejected the package and **the index stopped updating from v0.1.26 onwards**. `icon.png` is now a genuine PNG (224×224, 52 KB — comfortably under the 64 KB icon limit).
+  - Checked the sibling asset too: `preview.png` was already a valid PNG (1029×730, 130 KB, under the 512 KB limit) and is unchanged.
+
+### Notes
+- No code changes in this release — packaging/metadata fix only, so that the bazaar can resume indexing.
+- Bazaar image rules (from `siyuan-note/bazaar/rules/images.go`): `icon` → falls back to `icon.png`, ≤ 64 KB; `preview` → falls back to `preview.png`, ≤ 512 KB; allowed extensions `.png` / `.jpg` / `.jpeg` / `.webp` / `.avif` (SVG is not supported); the image must sit at the root of `package.zip`; **no dimension requirements**.
+
 ## [0.1.28] - 2026-09-13
 
 ### Fixed
