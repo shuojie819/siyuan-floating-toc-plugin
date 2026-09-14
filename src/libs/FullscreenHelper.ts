@@ -141,8 +141,44 @@ export class FullscreenHelper {
         document.querySelectorAll('.fullscreen-helper-btn-container').forEach(el => el.remove());
     }
 
+    /**
+     * 清扫「已失效的残留浮层」（Issue #44 兜底）。
+     *
+     * - elementCleanups 中宿主已脱离文档的条目：回收其 cleanup 回调并删除，
+     *   避免宿主（protyle / render-node）被销毁后闭包与监听器长期驻留（内存泄漏）；
+     * - 仍连接于文档、但父宿主不再被跟踪的 .fullscreen-helper-btn-container（z-index:30）：
+     *   视为孤儿浮层移除，防止其残留于界面之上；
+     * - 未被本实例跟踪的 .fullscreen-helper-overlay（异常/重复进入全屏遗留，z-index:9999）：
+     *   一并移除，防止极高层级浮层永久盖住界面。
+     *
+     * 正常全屏流程中 this.fullscreenContainer 即当前浮层，不会误删。
+     */
+    private sweepStaleEntries(): void {
+        this.elementCleanups.forEach((cleanup, container) => {
+            if (!container.isConnected) {
+                cleanup();
+                this.elementCleanups.delete(container);
+            }
+        });
+        document.querySelectorAll('.fullscreen-helper-btn-container').forEach((el) => {
+            const btn = el as HTMLElement;
+            const parent = btn.parentElement;
+            if (!parent || !this.elementCleanups.has(parent)) {
+                btn.remove();
+            }
+        });
+        document.querySelectorAll('.fullscreen-helper-overlay').forEach((el) => {
+            if (el !== this.fullscreenContainer) el.remove();
+        });
+    }
+
     private scanAllChartElements(): void {
         if (!this.config.enableFullscreenHelper) return;
+
+        // 兜底：清理宿主（protyle / render-node）销毁后残留的按钮容器与失效记录（Issue #44）。
+        // 宿主动态销毁（收起右侧文档、切换页面）时，其上的 .fullscreen-helper-btn-container
+        // （内联 z-index:30）可能残留在文档中，同时 elementCleanups 的失效条目会阻止重新扫描并造成泄漏。
+        this.sweepStaleEntries();
 
         if (this.config.enableMermaid) {
             this.processElements('div[data-subtype="mermaid"]', 'mermaid');

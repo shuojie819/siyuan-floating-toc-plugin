@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.30] - 2026-09-14
+
+### Fixed
+- **Intermittent layering bleed after collapsing the right-hand document (Issue #44)**: after repeatedly opening/collapsing the right dock, the floating outline could remain in the DOM and paint **above SiYuan's own left menu**. Three contributing defects were fixed:
+  1. **The plugin never subscribed to SiYuan's `destroy-protyle` event** (the event type was declared in `types.ts` but nobody listened). Collapsing the right dock destroys the editor instance, so the `position: fixed` outline lingered until the debounced DOM sweep caught up — matching the reported "happens after repeatedly opening/collapsing" pattern. The outline is now destroyed **immediately** on `destroy-protyle`.
+  2. **The outline's stacking order was hard-coded to `z-index: 20`**, which is **above** the level SiYuan assigns to its own menus/docks (the global counter `window.siyuan.zIndex` starts around 16). The outline's level is now derived from that counter so it always sits **below SiYuan's own UI and above the document content**.
+  3. Orphaned outline containers (document + bazaar) and leftover fullscreen-helper overlays had **no generic cleanup**. Both are now swept on every check, and stale fullscreen-helper entries are recycled.
+
+### Changed
+- **`tocZIndex` semantics refined (follow-up to Issue #36③)**: the default level (20) auto-follows SiYuan so it can never cover SiYuan's own UI; **explicitly raising it above 20 is still honored verbatim** (the user's own risk) — so the "被其它面板遮挡时调大" use case keeps working.
+
+### Tests
+- Added 4 spec files (26 cases) covering the z-index computation (including the "default auto-follows / explicit raise is honored" contract), orphan-container sweeping, fullscreen-helper cleanup, and the `destroy-protyle` wiring. Mutation-checked (5 mutations, each reddens at least one case).
+
 ## [0.1.29] - 2026-09-13
 
 ### Fixed

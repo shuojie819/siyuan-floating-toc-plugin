@@ -547,6 +547,87 @@ export function clearEditorPadding(protyleElement: HTMLElement): void {
     }
 }
 
+// ============================================
+// 层叠（z-index）安全计算 与 孤儿容器判定（Issue #44）
+// ============================================
+
+/**
+ * 悬浮大纲的默认层叠值（与 DEFAULT_CONFIG.tocZIndex 保持一致）。
+ * 仅作为配置缺失时的回退；运行时实际写入的层级由 computeTocZIndex 收敛到思源原生 UI 之下。
+ */
+export const DEFAULT_TOC_Z_INDEX = 20;
+
+/**
+ * 计算悬浮大纲实际使用的 z-index，确保它「高于文档正文，但不高于思源原生浮层」。
+ *
+ * 背景（Issue #44）：历史上 `.floating-toc` 硬编码 `position: fixed; z-index: 20`。
+ * 而思源自身的浮层（左侧停靠栏、右键菜单 `.b3-menu`、对话框等）由全局计数器
+ * `window.siyuan.zIndex` 统一分配（实测基线为 16，每次 +1）。当插件写死 20 时，
+ * 会盖在部分原生浮层之上，破坏思源既有的层叠关系，出现「收起右侧文档后偶发层级错乱、
+ * 编辑器元素穿透到左侧菜单之上」的现象。
+ *
+ * 修复思路：把插件 TOC 稳定地放在「原生浮层之下、正文内容之上」：
+ *   - 能拿到 siyuan.zIndex 时，**默认/未抬高的配置**上限收敛为 counter - 1
+ *     （保证不高于思源 UI 层级，修复 Issue #44 的层叠穿透）；
+ *   - **用户显式把层级调到默认值之上**（Issue #36③：被其它插件面板遮挡时调大）
+ *     属于自担风险的显式覆盖，原样放行、不做收敛 —— 保留 #36③ 的原始诉求；
+ *   - 拿不到 / 计数器异常时退回配置值（保持历史行为，不劣化）；
+ *   - 下限兜底为 1，保证仍高于 z-index:auto 的正文内容。
+ *
+ * @param configuredZIndex 用户/默认配置的 z-index（通常为 DEFAULT_TOC_Z_INDEX）
+ * @param siyuanZIndex `window.siyuan.zIndex` 计数器的当前值（可能为 undefined）
+ * @returns 实际应写入的、安全的 z-index（>= 1 的整数）
+ */
+export function computeTocZIndex(configuredZIndex: number, siyuanZIndex: unknown): number {
+    const fallback = Number.isFinite(configuredZIndex)
+        ? Math.floor(configuredZIndex as number)
+        : DEFAULT_TOC_Z_INDEX;
+    // 用户显式抬高到默认值之上（Issue #36③ 的合法用法）→ 原样放行
+    if (fallback > DEFAULT_TOC_Z_INDEX) {
+        return Math.max(1, fallback);
+    }
+    const counter =
+        typeof siyuanZIndex === 'number' && Number.isFinite(siyuanZIndex)
+            ? Math.floor(siyuanZIndex)
+            : NaN;
+    // 计数器不可用 / 异常小 → 保持配置值（避免劣化既有行为）
+    if (!Number.isFinite(counter) || counter <= 1) {
+        return Math.max(1, fallback);
+    }
+    const safeCap = counter - 1;
+    return Math.max(1, Math.min(fallback, safeCap));
+}
+
+/**
+ * 判定一个 `.siyuan-floating-toc-plugin-container` 是否为「孤儿容器」——
+ * 即宿主已销毁/脱离文档、不应继续存在于 DOM 中的残留容器（Issue #44 兜底清理）。
+ *
+ * - 集市容器挂在 `document.body`，通过 `(container)._tocHost` 关联宿主；
+ * - 普通文档/历史/集市 README 容器内嵌于宿主子树内，通过 `closest` 回溯宿主。
+ *
+ * @param container 待判定的容器元素
+ * @param isHostConnected 判定「宿主是否仍然有效（连接在文档中）」的谓词
+ * @returns 是否为孤儿容器（`true` 表示应被移除）
+ */
+export function isOrphanTocContainer(
+    container: HTMLElement,
+    isHostConnected: (host: HTMLElement) => boolean
+): boolean {
+    if (!container.isConnected) return true;
+
+    if (container.dataset.bazaar === 'true') {
+        const host = (container as any)._tocHost as HTMLElement | undefined;
+        if (!(host instanceof HTMLElement)) return true;
+        return !isHostConnected(host);
+    }
+
+    const host = container.closest(
+        '.protyle, .history__text, #configBazaarReadme, .config-bazaar__readme, .config-bazaar__panel'
+    );
+    if (!(host instanceof HTMLElement)) return true;
+    return !isHostConnected(host);
+}
+
 /**
  * 检查元素是否实际可见（在 DOM 中且未被 display:none / visibility:hidden / 面积为 0）
  * 用于切换标签页后销毁旧文档的 TOC 实例

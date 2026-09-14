@@ -17,7 +17,8 @@ import {
     isCoveredByBazaar,
     isCoveredByDialog,
     isAiOrChatPanel,
-    isElementVisible
+    isElementVisible,
+    isOrphanTocContainer
 } from "../utils/domUtils";
 import { DocIdResolver } from "./docIdResolver";
 import { TIMING, MUTATION_OBSERVER_CONFIG } from "../types";
@@ -312,19 +313,8 @@ export class ProtyleManager {
             }
         }
         
-        // 清理孤立的集市容器
-        document.querySelectorAll('.siyuan-floating-toc-plugin-container[data-bazaar="true"]').forEach(container => {
-            const host = (container as any)._tocHost;
-            if (!host || !document.contains(host)) {
-                const toc = this.plugin.tocInstances.get(host);
-                if (toc) {
-                    toc.$destroy();
-                    this.plugin.tocInstances.delete(host);
-                    this.plugin.tocDocIds.delete(host);
-                }
-                container.remove();
-            }
-        });
+        // 兜底：清理 DOM 中所有孤儿 TOC 容器（宿主已销毁 / 脱离文档 / 无关联宿主）
+        this.sweepOrphanContainers();
     }
 
     /**
@@ -341,6 +331,54 @@ export class ProtyleManager {
             });
         } else {
             host.querySelectorAll('.siyuan-floating-toc-plugin-container').forEach((c) => c.remove());
+        }
+    }
+
+    /**
+     * 兜底清扫 DOM 中所有孤儿 TOC 容器（Issue #44）。
+     *
+     * 覆盖两类残留：
+     *   1) 集市容器（挂在 body、`_tocHost` 缺失或已脱离文档）；
+     *   2) 宿主已销毁但容器因边缘时序（protyle 销毁/重建的竞态）而残留在文档中的普通容器。
+     *
+     * 移除容器时同步回收其关联的 Svelte 实例，避免实例 / 映射泄漏。
+     * 该清扫在每轮 checkProtyles 末尾执行，属于「安全网」——正常运行路径的容器由
+     * destroyTocForHost 精确移除，不会被误伤（其宿主仍在 tocInstances 中且连接于文档）。
+     */
+    private sweepOrphanContainers(): void {
+        document.querySelectorAll('.siyuan-floating-toc-plugin-container').forEach((node) => {
+            const container = node as HTMLElement;
+            if (!isOrphanTocContainer(container, (host) => document.contains(host))) return;
+
+            const host = (container as any)._tocHost as HTMLElement | undefined;
+            if (host) {
+                const toc = this.plugin.tocInstances.get(host);
+                if (toc) {
+                    try { toc.$destroy(); } catch (e) { /* ignore */ }
+                }
+                this.plugin.tocInstances.delete(host);
+                this.plugin.tocDocIds.delete(host);
+            }
+            container.remove();
+        });
+    }
+
+    /**
+     * 响应思源 `destroy-protyle` 事件：宿主 protyle 被销毁时，立即清理其 TOC。
+     *
+     * 「收起右侧文档」「关闭标签页」等操作会销毁 protyle。若只依赖 MutationObserver
+     * 的防抖 sweep，会存在一个「残留窗口」——已被销毁宿主的 TOC（`position: fixed` +
+     * 插件层级）仍短暂停留在文档中，可能与思源原生浮层叠加，正是 issue #44 所述
+     * 「偶发层级错乱」的合理来源之一。此方法把清理提前到事件发生的当下。
+     */
+    destroyTocForProtyle(protyle: any): void {
+        const host = protyle?.element;
+        if (!(host instanceof HTMLElement)) return;
+        if (this.plugin.tocInstances.has(host)) {
+            this.destroyTocForHost(host);
+        } else {
+            // 映射中已无实例，也兜底移除该宿主下的残留容器
+            this.removeContainerForHost(host);
         }
     }
 
