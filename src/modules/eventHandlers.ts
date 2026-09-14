@@ -28,6 +28,7 @@ export class EventHandlers {
         blockUpdate: null as ((event: CustomEvent<any>) => void) | null,
         wsMain: null as ((event: CustomEvent<any>) => void) | null,
         loadedProtyle: null as ((event: CustomEvent<any>) => void) | null,
+        destroyProtyle: null as ((event: CustomEvent<any>) => void) | null,
         searchListClick: null as ((event: MouseEvent) => void) | null,
         keydown: null as ((event: KeyboardEvent) => void) | null
     };
@@ -40,6 +41,7 @@ export class EventHandlers {
         this.boundHandlers.blockUpdate = this.handleBlockUpdate.bind(this);
         this.boundHandlers.wsMain = this.handleWsMain.bind(this);
         this.boundHandlers.loadedProtyle = this.onLoadedProtyle.bind(this);
+        this.boundHandlers.destroyProtyle = this.onDestroyProtyle.bind(this);
         this.boundHandlers.searchListClick = this.handleSearchListItemClick.bind(this);
         this.boundHandlers.keydown = this.handleGlobalKeydown.bind(this);
     }
@@ -52,6 +54,8 @@ export class EventHandlers {
         this.plugin.eventBus.on("update-block", this.boundHandlers.blockUpdate!);
         this.plugin.eventBus.on("ws-main", this.boundHandlers.wsMain!);
         this.plugin.eventBus.on("loaded-protyle", this.boundHandlers.loadedProtyle!);
+        // 宿主 protyle 被销毁（收起右侧文档 / 关闭标签页等）时立即清理其 TOC（Issue #44）
+        this.plugin.eventBus.on("destroy-protyle", this.boundHandlers.destroyProtyle!);
         
         // 添加全局键盘监听
         document.addEventListener('keydown', this.boundHandlers.keydown!);
@@ -77,6 +81,9 @@ export class EventHandlers {
         }
         if (this.boundHandlers.loadedProtyle) {
             this.plugin.eventBus.off("loaded-protyle", this.boundHandlers.loadedProtyle);
+        }
+        if (this.boundHandlers.destroyProtyle) {
+            this.plugin.eventBus.off("destroy-protyle", this.boundHandlers.destroyProtyle);
         }
         
         // 移除全局键盘监听
@@ -253,6 +260,19 @@ export class EventHandlers {
                     }, TIMING.SEARCH_PREVIEW_RETRY_DELAY);
                 }
             }
+        }
+    }
+
+    /**
+     * 处理 protyle 销毁事件（Issue #44）
+     *
+     * 收起右侧文档 / 关闭标签页会销毁 protyle，此处立即清理对应 TOC（含外层容器 DOM），
+     * 避免「已销毁宿主的 TOC 仍短暂留存于文档中」与思源原生浮层发生层叠叠加。
+     */
+    private onDestroyProtyle(event: CustomEvent<any>): void {
+        const protyle = event?.detail?.protyle;
+        if (protyle && protyle.element) {
+            this.plugin.protyleManager.destroyTocForProtyle(protyle);
         }
     }
 

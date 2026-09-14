@@ -2,7 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
-  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown } from "./utils/domUtils";
+  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown, computeTocZIndex } from "./utils/domUtils";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -124,7 +124,10 @@
           ? `max-height: ${maxHeight}px; height: auto;` 
           : `height: ${maxHeight}px;`;
 
-      pinnedStyle = `top: ${top}px; left: ${left}px; z-index: ${tocZIndex}; ${heightStyle} ${widthStyle}`;
+      // 层级：不再写死，改由思源自身计数器（window.siyuan.zIndex）取安全基线，
+      // 保证「高于正文内容、但不高于思源原生浮层（菜单/停靠栏/对话框）」，修复 #44。
+      const safeZIndex = computeTocZIndex(tocZIndex, (window as any).siyuan?.zIndex);
+      pinnedStyle = `top: ${top}px; left: ${left}px; z-index: ${safeZIndex}; ${heightStyle} ${widthStyle}`;
       
       // 更新编辑器内边距
       if (overlayMode) {
@@ -1342,7 +1345,9 @@
 
   /* 集市（bazaar）详情弹窗场景：容器被挂到 document.body，
      需提升层级并改用 fixed 定位，避免被 .b3-dialog 弹窗盖住而无法点击。
-     仅作用于 [data-bazaar="true"]，不影响文档/搜索/历史等原场景。 */
+     仅作用于 [data-bazaar="true"]，不影响文档/搜索/历史等原场景。
+     注意：该显式 z-index 会使容器成为层叠上下文，其内的 .floating-toc 层级相对本容器计算，
+     因此两个集市页仍稳定压过 .b3-dialog —— 此项为集市场景的契约，勿改小。 */
   :global(.siyuan-floating-toc-plugin-container[data-bazaar="true"]) {
     position: fixed;
     z-index: 999;
@@ -1350,6 +1355,8 @@
 
   .floating-toc {
     position: fixed;
+    /* 仅为首帧兜底：实际层级由 JS 通过 computeTocZIndex(取自 window.siyuan.zIndex) 内联写入，
+       保证不高于思源原生浮层（修复 #44）。请勿把该值调高。 */
     z-index: 20;
     display: flex;
     flex-direction: column;
