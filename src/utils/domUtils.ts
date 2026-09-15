@@ -738,3 +738,267 @@ export function isElementVisible(element: HTMLElement): boolean {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
 }
+
+// ============================================
+// 「只滚动自己」工具集：替代 scrollIntoView
+// ============================================
+
+/**
+ * 把非有限值（NaN / Infinity / undefined / null）收敛为有限数字。
+ *
+ * @param value     待收敛的值
+ * @param fallback  无效时的回退值，默认 0
+ * @returns 有限数字
+ */
+function toFiniteNumber(value: unknown, fallback: number = 0): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * 把目标 scrollTop 钳制到容器的合法滚动区间 `[0, scrollHeight - clientHeight]`。
+ *
+ * 单独导出为纯函数，便于单测覆盖「下越界 / 上越界 / 未布局」三类边界。
+ *
+ * 边界约定：
+ *   - `clientHeight <= 0`（容器尚未参与布局）→ 无可视区间，合法滚动量为 0；
+ *   - `scrollHeight` 非有限值 → 只做下界钳制（>= 0），不臆造上界。
+ *
+ * @param top          期望的 scrollTop
+ * @param scrollHeight 容器内容总高（`element.scrollHeight`）
+ * @param clientHeight 容器可视高度（`element.clientHeight`）
+ * @returns 钳制后的 scrollTop（一定 >= 0）
+ */
+export function clampScrollTop(top: number, scrollHeight: number, clientHeight: number): number {
+    const visibleHeight = Math.max(0, toFiniteNumber(clientHeight, 0));
+    const contentHeight = toFiniteNumber(scrollHeight, NaN);
+    const desired = toFiniteNumber(top, 0);
+
+    // 下界：永不为负
+    if (desired < 0) return 0;
+    // 容器未布局：无可视区间 → 不允许滚动（避免写入一个无意义的 scrollTop）
+    if (visibleHeight <= 0) return 0;
+
+    // 上界：内容不足以滚动时（scrollHeight 缺失/非法）只取正值；否则钳到极值
+    if (!Number.isFinite(contentHeight)) return desired;
+    const maxScrollTop = Math.max(0, contentHeight - visibleHeight);
+    return Math.min(desired, maxScrollTop);
+}
+
+/**
+ * 激活项滚动语义：`mode` 与 `scrollIntoView({ block })` 对齐。
+ *   - `center`：尽量让目标项居中；
+ *   - `nearest`：只在不可见时做「最小移动」（等价于 `block: 'nearest'`）。
+ */
+export type ItemScrollMode = 'center' | 'nearest';
+
+/**
+ * `computeItemScrollTop` 的入参（全部为纯数值，便于单测）。
+ */
+export interface ItemScrollTopParams {
+    /** 容器当前 scrollTop */
+    containerScrollTop: number;
+    /** 容器可视高度（clientHeight） */
+    containerHeight: number;
+    /** 目标项在容器内容坐标系中的偏移（含当前滚动量之外的绝对位置） */
+    itemOffsetTop: number;
+    /** 目标项自身高度 */
+    itemHeight: number;
+    /** 滚动语义：居中 / 最小移动 */
+    mode: ItemScrollMode;
+    /** 容器内容总高（scrollHeight），可选；提供时用于上界钳制 */
+    containerScrollHeight?: number;
+}
+
+/**
+ * 计算「让目标项在容器可视区内出现」所需的 scrollTop。
+ *
+ * 存在的理由（为什么不用 `scrollIntoView`）：
+ * `scrollIntoView` 会滚动目标元素的**所有可滚动祖先**。集市侧的 TOC 容器自 v0.1.31 起
+ * 挂在面板 `#configBazaarReadme` 内部，于是 TOC 内元素的祖先链上多了面板/弹窗滚动容器；
+ * 每次滚动都会引发的「激活项跟随」连带把外层面板滚走（README 被推离、下方露白），
+ * 并把绝对定位的 TOC 连同顶部按钮一起带出可视区。本函数是「只操作指定容器 scrollTop」
+ * 方案的计算内核，纯数值输入输出、可单测。
+ *
+ * 语义与边界：
+ *   - `mode: 'center'` → `itemOffsetTop + itemHeight / 2 - containerHeight / 2`；
+ *   - `mode: 'nearest'`：
+ *       · 已完整可见 → 原样返回 `containerScrollTop`（不动）；
+ *       · 在可视区上方 → 对齐顶边（`itemOffsetTop`）；
+ *       · 在可视区下方 → 对齐底边（`itemOffsetTop + itemHeight - containerHeight`）；
+ *       · 项高 > 容器高 → 无法完整可见，与浏览器 `nearest` 一致对齐顶边；
+ *   - `containerHeight <= 0`（未布局）→ 无法计算，保持原状；
+ *   - 结果经 `clampScrollTop` 钳制到 `[0, scrollHeight - containerHeight]`。
+ *
+ * @param params 见 {@link ItemScrollTopParams}
+ * @returns 应写入该容器 `scrollTop` 的目标值
+ */
+export function computeItemScrollTop(params: ItemScrollTopParams): number {
+    if (!params) return 0;
+
+    const containerScrollTop = Math.max(0, toFiniteNumber(params.containerScrollTop, 0));
+    const containerHeight = Math.max(0, toFiniteNumber(params.containerHeight, 0));
+    const itemOffsetTop = toFiniteNumber(params.itemOffsetTop, 0);
+    const itemHeight = Math.max(0, toFiniteNumber(params.itemHeight, 0));
+    const mode: ItemScrollMode = params.mode === 'center' ? 'center' : 'nearest';
+
+    // 容器尚未参与布局（高度为 0）：任何 scrollTop 都无从算起 → 保持原状
+    if (containerHeight <= 0) return containerScrollTop;
+
+    let target: number;
+    if (mode === 'center') {
+        target = itemOffsetTop + itemHeight / 2 - containerHeight / 2;
+    } else {
+        // 目标项相对容器可视区的坐标（0 = 容器顶边，containerHeight = 容器底边）
+        const itemTopRel = itemOffsetTop - containerScrollTop;
+        const itemBottomRel = itemTopRel + itemHeight;
+
+        if (itemHeight > containerHeight) {
+            // 项比容器还高（超长标题 / 极窄容器）：不可能完整可见 → 对齐顶边
+            target = itemOffsetTop;
+        } else if (itemTopRel >= 0 && itemBottomRel <= containerHeight) {
+            // 已完整可见 → 不移动
+            target = containerScrollTop;
+        } else if (itemTopRel < 0) {
+            // 在可视区上方 → 上移到刚好露出顶边
+            target = itemOffsetTop;
+        } else {
+            // 在可视区下方 → 下移到刚好露出底边
+            target = itemOffsetTop + itemHeight - containerHeight;
+        }
+    }
+
+    return clampScrollTop(target, toFiniteNumber(params.containerScrollHeight, NaN), containerHeight);
+}
+
+/**
+ * 判定元素是否为「纵向上实际可滚动」的容器。
+ *
+ * 判定条件与既有的 {@link findScrollableElement} 保持一致：
+ * `overflowY ∈ auto|scroll|overlay` 且 `scrollHeight - clientHeight > 1`。
+ *
+ * @param element 待判定元素
+ * @returns 是否纵向上可滚动
+ */
+export function isVerticallyScrollable(element: Element | null | undefined): boolean {
+    if (!(element instanceof HTMLElement)) return false;
+    const overflowY = getComputedStyle(element).overflowY;
+    const overflowAllowed = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+    return overflowAllowed && element.scrollHeight - element.clientHeight > 1;
+}
+
+/**
+ * 在给定边界内查找目标项「自己的」滚动容器。
+ *
+ * 这是替代 `scrollIntoView` 的关键安全边界：**绝不越过 root**。
+ * 集市场景下 TOC 挂在 `#configBazaarReadme` 面板内部，若沿用 `scrollIntoView`，
+ * 祖先链上的面板/弹窗容器会被连带滚动；此处限定只认 root（`.floating-toc` 本体）
+ * 以内的自滚动容器（展开态为 `.toc-content`，折叠态为 `.collapsed-strip`）。
+ *
+ * @param item 目标项元素（如 `.toc-item` / `.strip-item`）
+ * @param root 回溯边界（通常为 TOC 根容器 `.floating-toc`）；到达即终止
+ * @returns 目标项在边界内的自滚动容器；没有则返回 null（调用方据此 no-op）
+ */
+export function resolveOwnScroller(item: Element | null | undefined, root?: Element | null): HTMLElement | null {
+    if (!item) return null;
+    let node: HTMLElement | null = item.parentElement;
+
+    while (node) {
+        if (isVerticallyScrollable(node)) return node;
+        // 到达边界仍未找到 → 立即停止，绝不向 outside root 的祖先扩散
+        if (root && node === root) return null;
+        node = node.parentElement;
+    }
+    return null;
+}
+
+/**
+ * 计算目标元素相对滚动容器**内容原点**的偏移。
+ *
+ * 用 rect 差值而非 `offsetTop` 链：`offsetTop` 只相对最近的 `offsetParent`，
+ * 在嵌套 `position: relative/absolute`（TOC 即为绝对定位）时容易算错；
+ * rect 差值加上容器当前 scrollTop，得到内容与坐标系无关的绝对偏移。
+ *
+ * ⚠️ 包含性校验（必须）：rect 差值在「target 不在 scroller 子树内」时仍然成立为
+ * 一个**纯视差数字**（两个无关元素的屏幕距离），而它与容器内容坐标系毫无关系；
+ * 若把它当作偏移写进 scrollTop，会被钳制后**真实滚动到错误位置**（静默跳锚、比不滚更糟）。
+ * 触发场景：宿主内含 ≥2 个 `.protyle-content`，解析出的 scroller 与 target 不同源。
+ * 因此：target 不在 scroller 内 → **返回 null（绝不返回 0，0 会滚到顶部）**，调用方据此 no-op。
+ *
+ * @param target   目标元素
+ * @param scroller 滚动容器
+ * @returns 目标相对容器内容起点的偏移（px）；参数缺失或 target 不在 scroller 内时返回 null
+ */
+export function computeRelativeOffset(target: Element | null, scroller: Element | null): number | null {
+    if (!target || !scroller) return null;
+    if (!scroller.contains(target)) return null;
+    const targetRect = target.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    const currentScrollTop = (scroller as HTMLElement).scrollTop || 0;
+    return (targetRect.top - scrollerRect.top) + currentScrollTop;
+}
+
+/**
+ * 只滚动指定容器本身到给定偏移（不触碰任何祖先容器）。
+ *
+ * @param scroller 目标滚动容器（null → 直接返回 false，不做任何兜底）
+ * @param offsetTop 期望的内容偏移
+ * @param behavior  'smooth' 走 `scrollTo({behavior})`，'auto' 直接赋值 scrollTop
+ * @returns 是否执行了滚动（容器不存在时为 false）
+ */
+export function scrollScrollerToOffset(
+    scroller: HTMLElement | null,
+    offsetTop: number,
+    behavior: ScrollBehavior = 'auto'
+): boolean {
+    if (!(scroller instanceof HTMLElement)) return false;
+
+    const top = clampScrollTop(offsetTop, scroller.scrollHeight, scroller.clientHeight);
+    if (behavior !== 'auto' && typeof scroller.scrollTo === 'function') {
+        try {
+            scroller.scrollTo({ top, behavior });
+            return true;
+        } catch (error) {
+            // 部分环境（含老版 jsdom）未实现 Element.scrollTo → 退回直接赋值
+        }
+    }
+    scroller.scrollTop = top;
+    return true;
+}
+
+/**
+ * 「激活项跟随」的滚动实现：只在 TOC 自己内部滚动，绝不使用 `scrollIntoView`。
+ *
+ * @param item     目标项（`.toc-item` / `.strip-item`）
+ * @param root     TOC 根容器 `container`（作为回溯边界）
+ * @param mode     'center'（展开时定位）/ 'nearest'（滚动跟随）
+ * @param behavior 默认 'auto'（即时）；传 'smooth' 可保持原有平滑观感
+ * @returns 是否命中了自滚动容器并执行滚动
+ */
+export function scrollItemWithinOwnScroller(
+    item: Element | null | undefined,
+    root?: Element | null,
+    mode: ItemScrollMode = 'nearest',
+    behavior: ScrollBehavior = 'auto'
+): boolean {
+    if (!item) return false;
+    const scroller = resolveOwnScroller(item, root);
+    if (!scroller) return false;
+
+    // scroller 是沿 item 的 parentElement 链找到的，理论上必包含 item；
+    // 仍显式处理返回 null 的情形（防御：绝不把无效偏移喂给滚动量计算）。
+    const itemOffsetTop = computeRelativeOffset(item, scroller);
+    if (itemOffsetTop === null) return false;
+
+    const target = computeItemScrollTop({
+        containerScrollTop: scroller.scrollTop || 0,
+        containerHeight: scroller.clientHeight,
+        itemOffsetTop,
+        itemHeight: (item as HTMLElement).getBoundingClientRect().height,
+        containerScrollHeight: scroller.scrollHeight,
+        mode
+    });
+
+    // 目标值未变化（差值在亚像素内）→ 不产生写操作，避免无意义的 scroll 事件抖动
+    if (Math.abs(target - (scroller.scrollTop || 0)) < 0.5) return true;
+    return scrollScrollerToOffset(scroller, target, behavior);
+}
