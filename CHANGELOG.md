@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.31] - 2026-09-15
+
+### Added
+- **Independent pin state for the bazaar outline**: pinning the outline in a document no longer force-expands it in the SiYuan bazaar (and vice versa). The bazaar's pin state is **session-scoped** — it is intentionally *not* written to the global config, consistent with the existing session-only behaviour of "switch side".
+- **Scroll-to-top / scroll-to-bottom now work in the bazaar**: the toolbar's ↑/↓ buttons (and ⟳, which in the bazaar now means "refresh the outline") previously targeted document-only elements (`.protyle-scroll__up/down`, `.protyle-wysiwyg`, `.protyle-content`), so they did nothing on a bazaar README page. They now resolve the README's actual scroll container at runtime and respect the *smooth scroll* setting.
+
+### Changed
+- **The bazaar outline is anchored inside the package-detail panel instead of floating next to the dialog**: the TOC container is now appended into `#configBazaarReadme` (a sliding `.config__view` panel) and positioned with `position: absolute`, so it moves with the panel, stays vertically aligned with the README, and no longer drifts out to the window edge when the dialog is narrow. `updateBazaarPosition()`'s manual `.b3-dialog__container` math is skipped in this mode; the previous `body + position: fixed + z-index: 999` path is kept as an **automatic fallback** for older SiYuan structures. Width still follows `tocWidth` / `miniTocWidth` and dragging.
+- Document / search-preview / file-history scenes are untouched — every new branch is gated behind the bazaar checks.
+
+### Notes
+- Tests: **156 passed / 19 files** (previous release: 128 → +28). The 16 pre-existing spec files are byte-identical to the previous release.
+- **Two source-level defects were caught by independent verification and fixed before release**: (1) the bazaar TOC width had stopped following `tocWidth` / `miniTocWidth`; (2) the scroll-container resolver searched *upwards only*, while the README's scroll container `.item__main` is a **descendant** of the host — which made scroll-to-top/bottom a silent no-op and regressed the scroll-spy. Both now have regression tests.
+- ⚠️ **Needs real-machine confirmation** (not verifiable in CI): the bazaar ↑/↓ actually scrolling the README; scroll-spy highlighting following the README; the anchored outline moving with the sliding panel; and the independent pin behaviour.
+
 ## [0.1.30] - 2026-09-14
 
 ### Fixed
