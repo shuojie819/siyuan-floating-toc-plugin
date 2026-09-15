@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.33] - 2026-09-16
+
+### Fixed
+- **集市里的悬浮大纲无法上下滚动、看不到下方标题** —— 这是 v0.1.31 引入、v0.1.32 未覆盖的第三个问题。
+  - 根因：`computeBazaarInlineStyle` 在 **自适应高度（默认开启）** 下只产出 `height: auto`，**没有高度上界**。集市内联态的容器是 `position: absolute; top/bottom` 撑开的（高度确定），而大纲本体也是绝对定位；只给 `height: auto` → 大纲高度 = 内容高度（无界）→ 内部 `.toc-panel` / `.toc-content` **永不产生溢出** → 列表不会滚、超出面板的部分被裁掉。
+  - 修法：沿用文档场景早已验证的写法（`max-height: ${maxHeight}px; height: auto;`），给自适应分支补上界 `max-height: 100%` —— 内容少时仍贴合内容（保留自适应语义），内容多时被容器高度截住，**列表内部即可滚动**。
+  - **影响面**：`adaptiveHeight` 默认值就是 `true`，所以**所有集市用户**都会遇到，不是个别配置问题。
+
+### Notes
+- **测试：200 passed / 21 files**（v0.1.32 发版时 195 → +5）。v0.1.32 的 21 个 spec 中 **20 个逐字节未动**，唯一改动的是 `bazaarInlineStyle.spec.ts`（契约变更导致的合理更新，经 QA 逐行核验未放松任何断言）。
+- 变异校验（工程师 + QA 各一轮，共 3 项）：删掉上界 → 6 条变红；上界值写错（如 `1000px`）→ 5 条变红；自适应语义退化 → 5 条变红。恢复均以 md5 锚定代码本身核对。
+- 构建干净、无 Sass 弃用警告；`tsc` 的 15 条错误全部为既有错误、与本次文件无关。
+- ⚠️ **残留风险（需真机确认第 1 项）**：`max-height: 100%` 依赖集市面板 `.config__view` 布局后具有确定高度。若真机上容器 `clientHeight` 为 0，大纲会被压成不可见 —— 届时改用 JS 计算的 px 上界即可（已备方案）。
+
 ## [0.1.32] - 2026-09-16
 
 ### Fixed
