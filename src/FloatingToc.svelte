@@ -2,7 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
-  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown, computeTocZIndex, findScrollableElement, computeBazaarInlineStyle, resolveBazaarScrollContainer } from "./utils/domUtils";
+  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown, computeTocZIndex, findScrollableElement, computeBazaarInlineStyle, resolveBazaarScrollContainer, scrollItemWithinOwnScroller, computeRelativeOffset, scrollScrollerToOffset } from "./utils/domUtils";
   import { bazaarSessionState, applyPinPersistence } from "./modules/protyleManager";
   import type { Heading, IProtyle } from "./types";
 
@@ -24,7 +24,7 @@
   export let toolbarConfig: string[] = ["scrollToTop", "scrollToBottom", "refreshDoc"];
   export let overlayMode = false;
   export let smoothScroll = true;
-  // 是否为集市场景（集市的文档对象不同，图钉/切换侧栏/折叠展开等按钮无效，需隐藏）
+  // 是否为集市场景（集市的文档对象不同：仅「切换侧栏」按钮由 CSS 隐藏，其余按钮均已有效）
   export let isBazaar = false;
 
   let headings: Heading[] = [];
@@ -65,13 +65,15 @@
   $: isExpanded = isPinned || isHovering || isResizing;
 
   // 展开时立即同步滚动位置到当前活动标题（无动画）
+  // ⚠️ 禁止使用「滚动到可视区」的原生 API（它会连带滚动目标的所有可滚动祖先）：
+  //    集市场景下会把 #configBazaarReadme 面板/弹窗一起滚走（README 被推离、下方露白，
+  //    TOC 连按钮被带出可视区）。改为只在 TOC 自己的列表容器（.toc-content）内滚动。
   $: if (isExpanded && activeHeadingId && container) {
       // 使用 tick 确保 DOM 已更新
       requestAnimationFrame(() => {
           const activeTocItem = container?.querySelector(`.toc-item[data-id="${activeHeadingId}"]`);
           if (activeTocItem) {
-              // 使用 scrollIntoView 但不带动画，实现即时定位
-              activeTocItem.scrollIntoView({ behavior: "instant", block: "center" });
+              scrollItemWithinOwnScroller(activeTocItem, container, 'center', 'auto');
           }
       });
   }
@@ -979,32 +981,31 @@
     // console.log('DEBUG: scrollToBlockInDom - targetBlock:', targetBlock);
     const headingBlock = targetBlock.closest('[data-type="NodeHeading"]') || targetBlock;
     
-    const contentElement = headingBlock.closest('.protyle-content') ||
-                          headingBlock.closest('.item__main') ||
-                          headingBlock.closest('.item__readme') ||
-                          headingBlock.closest('.b3-typography');
-    
-    if (contentElement || isBazaarTarget()) {
-      // console.log('DEBUG: scrollToBlockInDom - executing scrollIntoView');
-      headingBlock.scrollIntoView({
-        behavior: smoothScroll ? 'smooth' : 'auto',
-        block: 'start'
-      });
-      
-      // 只对目标标题块应用高亮
-      if (headingBlock.hasAttribute('data-node-id')) {
-        const isTitleBlock = headingBlock.getAttribute('data-type') === 'NodeHeading';
-        if (isTitleBlock) {
-          headingBlock.classList.add('protyle-wysiwyg--hl');
-          setTimeout(() => {
-            headingBlock.classList.remove('protyle-wysiwyg--hl');
-          }, 1024);
-        }
+    // ⚠️ 禁止使用「滚动到可视区」的原生 API（它会滚动目标的所有可滚动祖先）—— 集市场景下会把
+    //    #configBazaarReadme 面板/弹窗一起滚走（README 被推离 + 下方露白、TOC 连按钮被带出可视区）。
+    //    改为只滚动当前场景自己的滚动容器（文档 .protyle-content / 集市 README 容器）。
+    const scroller = resolveScrollContainer();
+    if (!scroller) return false; // 拿不到容器 → no-op，不做任何兜底
+
+    // 目标块不在该滚动容器内（如宿主内多个 .protyle-content 且目标不在解析出的那个里）
+    // → computeRelativeOffset 返回 null，此时差值只是无意义的视差数字，必须 no-op，
+    //   否则会被钳制后真实写入 scrollTop → 静默跳到错误位置（比不滚更糟）。
+    const offsetTop = computeRelativeOffset(headingBlock, scroller);
+    if (offsetTop === null) return false;
+
+    scrollScrollerToOffset(scroller, offsetTop, smoothScroll ? 'smooth' : 'auto');
+
+    // 只对目标标题块应用高亮
+    if (headingBlock.hasAttribute('data-node-id')) {
+      const isTitleBlock = headingBlock.getAttribute('data-type') === 'NodeHeading';
+      if (isTitleBlock) {
+        headingBlock.classList.add('protyle-wysiwyg--hl');
+        setTimeout(() => {
+          headingBlock.classList.remove('protyle-wysiwyg--hl');
+        }, 1024);
       }
-      return true;
     }
-    // console.log('DEBUG: scrollToBlockInDom - contentElement not found');
-    return false;
+    return true;
   };
 
   /**
@@ -1206,13 +1207,15 @@
     
           if (currentActiveId && currentActiveId !== activeHeadingId) {
               activeHeadingId = currentActiveId;
+              // ⚠️ 禁止使用「滚动到可视区」的原生 API（会连带滚动所有可滚动祖先 → 集市面板被滚走、TOC 被带出可视区）
+              //    改为「只滚自己的列表容器」：展开态滚 .toc-content，折叠态滚 .collapsed-strip。
               const activeTocItem = container?.querySelector(`.toc-item[data-id="${activeHeadingId}"]`);
               if (activeTocItem) {
-                  activeTocItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  scrollItemWithinOwnScroller(activeTocItem, container, 'nearest', 'smooth');
               }
               const activeStripItem = container?.querySelector(`.strip-item[data-id="${activeHeadingId}"]`);
               if (activeStripItem) {
-                  activeStripItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  scrollItemWithinOwnScroller(activeStripItem, container, 'nearest', 'smooth');
               }
           }
       });
@@ -1304,7 +1307,8 @@
                     <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z" /></svg>
                 {/if}
                 </button>
-                <button class="action-btn" on:click={toggleDockSide} title="Switch Side" aria-label="Switch Dock Side">
+                <!-- dock-side-btn：集市 inline 态下 dockSide 不生效（定位由 CSS 锚定面板右侧），单独隐藏 -->
+                <button class="action-btn dock-side-btn" on:click={toggleDockSide} title="Switch Side" aria-label="Switch Dock Side">
                     <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6.5,10L2,14.5L6.5,19V16H11V13H6.5V10M17.5,10V13H13V16H17.5V19L22,14.5L17.5,10Z" /></svg>
                 </button>
                 
@@ -1834,11 +1838,12 @@
     transform-origin: center;
   }
 
-  /* 集市场景：隐藏无效的图钉/切换侧栏/折叠展开等按钮与滚动工具栏 */
-  .floating-toc.bazaar .header-actions {
-    display: none;
-  }
-  .floating-toc.bazaar .scroll-toolbar {
+  /* 集市场景：只隐藏「确实无效」的按钮。
+     ⚠️ 历史遗留曾把整个 .header-actions 与 .scroll-toolbar 隐藏（当年这些按钮在集市无效）。
+     v0.1.31 之后：↑/↓ 已能真正滚动 README（resolveBazaarScrollContainer + 集市分支滚动），
+     固定状态也已独立且会话级生效 —— 置顶/置底/刷新/图钉/折叠/展开均已有效，必须可见。
+     仅「切换侧栏 Switch Side」在集市 inline 态下由 CSS 锚定在面板右侧、dockSide 不生效，故单独隐藏。 */
+  .floating-toc.bazaar .dock-side-btn {
     display: none;
   }
 </style>
