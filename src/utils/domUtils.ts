@@ -269,6 +269,43 @@ export function computeLeftDockPadding(width: number, tocGap: number, pinnedNeed
 }
 
 /**
+ * computeBazaarInlineStyle 的参数集合（集市「嵌入面板」态下的尺寸同步）。
+ */
+export interface BazaarInlineStyleParams {
+    /** 是否处于展开态 */
+    isExpanded: boolean;
+    /** 展开态宽度（已含窄屏兜底，调用方传入 getEffectiveTocWidth()） */
+    effectiveTocWidth: number;
+    /** 折叠态宽度（用户配置 miniTocWidth） */
+    miniTocWidth: number;
+    /** 是否自适应高度（true → 贴合内容，不拉满面板） */
+    adaptiveHeight: boolean;
+}
+
+/**
+ * 计算集市（bazaar）「嵌入 #configBazaarReadme 面板」态下，TOC 本体需要 **由 JS 内联同步** 的尺寸样式。
+ *
+ * 设计：定位完全交给 CSS（容器 absolute + top/right 锚定，见 FloatingToc.svelte 样式区）；
+ * 本函数 **只产出宽度/高度**，不产出 left/top，避免与 CSS 定位耦合、也避免重蹈「fixed 相对 transform 祖先」的错位。
+ *
+ * 宽度必须由 JS 同步，才能让用户可见能力在集市里生效：
+ *   - 展开态宽度 = effectiveTocWidth（跟随「拖拽改宽」的 tocWidth，及窄屏 200 兜底）；
+ *   - 折叠态宽度 = miniTocWidth（跟随设置项「Mini 大纲宽度」）。
+ * 高度：
+ *   - adaptiveHeight → `height: auto`（贴合内容，不拉满面板高度）；
+ *   - 否则 → `height: 100%`（撑满容器 = 面板可用高度）。
+ *
+ * @param p 参数集合
+ * @returns 可直接赋给 `.floating-toc` 的 style 字符串
+ */
+export function computeBazaarInlineStyle(p: BazaarInlineStyleParams): string {
+    const w = p.isExpanded ? p.effectiveTocWidth : p.miniTocWidth;
+    return p.adaptiveHeight
+        ? `width: ${w}px; height: auto;`
+        : `width: ${w}px; height: 100%;`;
+}
+
+/**
  * calculateTocPosition 的参数集合。
  * 由 FloatingToc.svelte 的 calculateTocPosition 抽出（逻辑不变），
  * 仅把原先的闭包依赖（isExpanded / isPinned / dockSide / miniTocWidth）与两个常量参数化，
@@ -545,6 +582,58 @@ export function clearEditorPadding(protyleElement: HTMLElement): void {
         content.style.paddingLeft = '';
         content.style.paddingRight = '';
     }
+}
+
+/**
+ * 从 start（含自身）向上寻找第一个「纵向可滚动」的元素。
+ *
+ * 判定：`scrollHeight - clientHeight > 1` 且 `computedStyle.overflowY ∈ auto|scroll|overlay`。
+ * 找不到返回 null。
+ *
+ * 用途：统一集市（bazaar）等场景的滚动容器探测，替代原先硬编码的 `.item__main || .item__readme`
+ * ——集市 README 的真实滚动容器随思源版本变化，硬编码易失效；本函数按「实际可滚动」这一
+ * 行为事实探测，对结构变化更健壮。
+ *
+ * @param start    起始元素（可为 null）
+ * @param maxDepth 向上回溯的最大层数，默认 8
+ * @returns 第一个纵向上可滚动的元素；无则返回 null
+ */
+export function findScrollableElement(start: Element | null, maxDepth = 8): HTMLElement | null {
+    let el: Element | null = start;
+    let depth = 0;
+    while (el instanceof HTMLElement && depth < maxDepth) {
+        const overflowY = getComputedStyle(el).overflowY;
+        const scrollable =
+            el.scrollHeight - el.clientHeight > 1 &&
+            (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay');
+        if (scrollable) return el;
+        el = el.parentElement;
+        depth++;
+    }
+    return null;
+}
+
+/**
+ * 解析集市（bazaar）详情页 README 的**真实滚动容器**。
+ *
+ * ⚠️ 方向性要点（易错）：集市 TOC 的宿主 `targetElement` = `#configBazaarReadme` 面板**本身**，
+ * 而其滚动容器 `.item__main{overflow:auto}` 是宿主的**后代**（README 内容 `.item__readme` /
+ * `.b3-typography` 位于其内）。`findScrollableElement` 只沿 `parentElement` **向上**探测，
+ * 若直接以宿主为起点，永远到不了后代 → 恒为 null（置顶/置底失效、scroll-spy 退化）。
+ * 因此必须**从 README 内容（后代）起，向上取最近的纵向上可滚动祖先**：
+ *   `.item__readme`（或其自身可滚）→ `.item__main` → … 取最近者。
+ *
+ * 找不到时返回 null（调用方据此跳过，不报错）。
+ *
+ * @param host 集市 TOC 宿主（`#configBazaarReadme` / `.config-bazaar__readme` 等）
+ * @returns README 的真实滚动容器；无则 null
+ */
+export function resolveBazaarScrollContainer(host: Element | null): HTMLElement | null {
+    if (!host) return null;
+    const readmeRoot: Element = host.querySelector('.item__readme')
+        || host.querySelector('.b3-typography')
+        || host;
+    return findScrollableElement(readmeRoot);
 }
 
 // ============================================

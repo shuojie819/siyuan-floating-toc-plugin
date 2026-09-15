@@ -2,7 +2,8 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import { getDocOutline, flattenOutline, checkBlockFold } from "./api";
   import { handleHeadingClick } from "./utils/scrollOrNavigate";
-  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown, computeTocZIndex } from "./utils/domUtils";
+  import { calculateTocPosition, computeLeftDockPadding, isBazaarPanelShown, computeTocZIndex, findScrollableElement, computeBazaarInlineStyle, resolveBazaarScrollContainer } from "./utils/domUtils";
+  import { bazaarSessionState, applyPinPersistence } from "./modules/protyleManager";
   import type { Heading, IProtyle } from "./types";
 
   export let plugin: any;
@@ -240,7 +241,21 @@
   };
 
   const updateBazaarPosition = () => {
-      // 使用对话框容器或 item__main 元素的位置，而不是 README 元素的位置
+      // 嵌入态（容器已挂进 #configBazaarReadme 滑入面板内部）：
+      // **定位交给 CSS**（容器 absolute + top/right/bottom 锚定），JS 不做 left/top 计算；
+      // 但 **尺寸仍必须由 JS 同步**，保证 tocWidth（拖拽改宽）/ miniTocWidth（设置项）/ adaptiveHeight 在集市里生效。
+      // 注意：data-bazaar-inline 标记在「容器」上（container 是 .floating-toc），故需经最近的容器读取。
+      const hostContainer = container?.closest?.('.siyuan-floating-toc-plugin-container') as HTMLElement | null;
+      if (hostContainer?.dataset.bazaarInline === 'true') {
+          pinnedStyle = computeBazaarInlineStyle({
+              isExpanded,
+              effectiveTocWidth: getEffectiveTocWidth(),
+              miniTocWidth,
+              adaptiveHeight
+          });
+          return;
+      }
+      // 回退路径（旧结构/未嵌入）：使用对话框容器或 item__main 元素的位置，而不是 README 元素的位置
       // 因为 README 元素会在容器内部滚动，导致位置不稳定
       const containerElement = targetElement.closest('.b3-dialog__container') || 
                               targetElement.closest('.b3-dialog') ||
@@ -377,7 +392,10 @@
   onMount(async () => {
       const savedData = plugin.data["config.json"];
       if (savedData) {
-          isPinned = savedData.isPinned ?? false;
+          // 固定状态按场景分流：
+          //  - 集市：使用「会话级」状态（不读、不写全局配置），与文档固定互不影响；
+          //  - 其它：沿用全局配置 isPinned。
+          isPinned = isBazaar ? bazaarSessionState.pinned : (savedData.isPinned ?? false);
           dockSide = savedData.dockSide ?? 'right';
           tocWidth = savedData.tocWidth ?? 250;
           adaptiveHeight = savedData.adaptiveHeight ?? false;
@@ -435,6 +453,17 @@
   let maxDepth = 6;
 
   const scrollToTop = () => {
+      // 集市：滚动目标应为「实际可滚动的 README 容器」，而非文档专用元素。
+      // 注意：targetElement 是 #configBazaarReadme 面板本体，滚动容器 .item__main 是其**后代**，
+      // 故经 resolveBazaarScrollContainer（从 README 后代向上探测）解析，而非直接 findScrollableElement(targetElement)。
+      // 找不到可滚动容器时回退到下方文档逻辑（此时目标为空、无副作用）。
+      if (targetElement && isBazaarTarget()) {
+          const scroller = resolveBazaarScrollContainer(targetElement);
+          if (scroller) {
+              scroller.scrollTo({ top: 0, behavior: smoothScroll ? 'smooth' : 'auto' });
+              return;
+          }
+      }
       if (targetElement) {
           // 1. 尝试点击原生滚动条的上箭头
           const scrollUpBtn = targetElement.querySelector('.protyle-scroll__up') as HTMLElement;
@@ -470,6 +499,15 @@
   };
 
   const scrollToBottom = () => {
+      // 集市：滚动目标应为「实际可滚动的 README 容器」，而非文档专用元素。
+      // 同 scrollToTop：面板本体不是滚动容器（.item__main 在其内部），经 resolveBazaarScrollContainer 解析。
+      if (targetElement && isBazaarTarget()) {
+          const scroller = resolveBazaarScrollContainer(targetElement);
+          if (scroller) {
+              scroller.scrollTo({ top: scroller.scrollHeight, behavior: smoothScroll ? 'smooth' : 'auto' });
+              return;
+          }
+      }
       if (targetElement) {
           // 优化：检查文档是否已完全加载 (data-eof="2" 表示已到底部)
           const content = targetElement.querySelector(".protyle-content");
@@ -508,6 +546,13 @@
   let isRefreshing = false;
   const refreshDoc = () => {
       if (isRefreshing) return;
+      // 集市（bazaar）：没有 Protyle 实例，文档式的「刷新/重载」语义不适用。
+      // 其刷新语义 = 重新从 DOM 解析 README 大纲。
+      if (isBazaarTarget()) {
+          isRefreshing = true;
+          Promise.resolve(updateHeadings(currentDocId)).finally(() => { isRefreshing = false; });
+          return;
+      }
       isRefreshing = true;
 
       // 尝试使用原生 API 刷新
@@ -637,7 +682,13 @@
 
   const togglePin = () => {
       isPinned = !isPinned;
-      saveData();
+      // 分仓持久化：集市只写会话态（不落全局配置）；文档写全局配置。
+      // 先更新 isPinned 再调用，确保文档场景 saveData() 读取到最新值。
+      applyPinPersistence(isPinned, {
+          isBazaar,
+          session: bazaarSessionState,
+          persist: saveData
+      });
   };
 
   const toggleDockSide = () => {
@@ -1083,7 +1134,7 @@
             ? '<path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />'
             : '<path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z" />',
           handler: () => togglePin(),
-          title: () => isPinned ? "Unpin (Collapse)" : "Pin (Push Content)"
+          title: () => isPinned ? "Unpin (Collapse)" : (isBazaar ? "Pin (Keep Expanded)" : "Pin (Push Content)")
       },
       toggleDockSide: {
           icon: '<path fill="currentColor" d="M6.5,10L2,14.5L6.5,19V16H11V13H6.5V10M17.5,10V13H13V16H17.5V19L22,14.5L17.5,10Z" />',
@@ -1102,6 +1153,21 @@
       }
   };
 
+  // 解析当前场景的「纵向滚动容器」：
+  //  - 文档 / 历史 / 搜索：`.protyle-content`（原逻辑不变）；
+  //  - 集市（bazaar）：经 resolveBazaarScrollContainer 按「实际可滚动」探测（从 README 后代向上取最近者可滚容器），
+  //    不再硬编码 `.item__main || .item__readme`；注意不能直接对 targetElement（面板本体）向上探测，其滚动容器是后代；
+  // 找不到返回 null（不挂监听 / 不做 scroll-spy）。
+  const resolveScrollContainer = (): HTMLElement | null => {
+      if (!targetElement) return null;
+      const protyleContent = targetElement.querySelector(".protyle-content") as HTMLElement | null;
+      if (protyleContent) return protyleContent;
+      if (isBazaarTarget()) {
+          return resolveBazaarScrollContainer(targetElement);
+      }
+      return null;
+  };
+
   const onScroll = () => {
       if (scrollTimer) return;
       if (headings.length === 0) return; // Optimization: don't query if no headings
@@ -1110,13 +1176,8 @@
           scrollTimer = null;
           if (!targetElement) return;
           
-          let contentElement = targetElement.querySelector(".protyle-content");
-          
-          // 集市页面使用不同的滚动容器
-          if (!contentElement && isBazaarTarget()) {
-              contentElement = targetElement.querySelector(".item__main") ||
-                              targetElement.querySelector(".item__readme") as HTMLElement;
-          }
+          // 统一经 resolveScrollContainer 解析滚动容器（集市不再硬编码）
+          const contentElement = resolveScrollContainer();
           
           if (!contentElement) return;
     
@@ -1177,28 +1238,12 @@
   };
 
   $: if (targetElement) {
-      let contentElement = targetElement.querySelector(".protyle-content");
-      
-      // 集市页面使用不同的滚动容器
-      if (!contentElement && isBazaarTarget()) {
-          contentElement = targetElement.querySelector(".item__main") ||
-                          targetElement.querySelector(".item__readme");
-      }
-      
-      attachScrollListener(contentElement);
+      attachScrollListener(resolveScrollContainer());
   }
   
   afterUpdate(() => {
       if (targetElement) {
-          let contentElement = targetElement.querySelector(".protyle-content");
-          
-          // 集市页面使用不同的滚动容器
-          if (!contentElement && isBazaarTarget()) {
-              contentElement = targetElement.querySelector(".item__main") ||
-                              targetElement.querySelector(".item__readme");
-          }
-          
-          attachScrollListener(contentElement);
+          attachScrollListener(resolveScrollContainer());
       }
   });
 </script>
@@ -1252,7 +1297,7 @@
       <div class="toc-panel">
         <div class="toc-header">
             <div class="header-actions">
-                <button class="action-btn" on:click={togglePin} title={isPinned ? "Unpin (Collapse)" : "Pin (Push Content)"} aria-label="Toggle Pin">
+                <button class="action-btn" on:click={togglePin} title={isPinned ? "Unpin (Collapse)" : (isBazaar ? "Pin (Keep Expanded)" : "Pin (Push Content)")} aria-label="Toggle Pin">
                 {#if isPinned}
                     <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
                 {:else}
@@ -1345,12 +1390,43 @@
 
   /* 集市（bazaar）详情弹窗场景：容器被挂到 document.body，
      需提升层级并改用 fixed 定位，避免被 .b3-dialog 弹窗盖住而无法点击。
-     仅作用于 [data-bazaar="true"]，不影响文档/搜索/历史等原场景。
+     仅作用于「未嵌入面板」的 [data-bazaar="true"]（回退路径），不影响嵌入态、文档/搜索/历史等原场景。
      注意：该显式 z-index 会使容器成为层叠上下文，其内的 .floating-toc 层级相对本容器计算，
      因此两个集市页仍稳定压过 .b3-dialog —— 此项为集市场景的契约，勿改小。 */
-  :global(.siyuan-floating-toc-plugin-container[data-bazaar="true"]) {
+  :global(.siyuan-floating-toc-plugin-container[data-bazaar="true"]:not([data-bazaar-inline="true"])) {
     position: fixed;
     z-index: 999;
+  }
+
+  /* 集市（bazaar）嵌入态：容器已挂进 #configBazaarReadme 滑入面板内部。
+     由于面板自身 position:absolute（width:100%，右侧 -100% 滑入）→ 作为包含块成立。
+     容器锚定面板内右侧（top/right/bottom 由面板撑开），TOC 随之与 README 上下对齐、
+     并随面板滑入/滑出移动与显隐。base 规则的 width:0 保留（不挤压 README 布局）；
+     此处 height:auto 覆盖 base 的 height:0，令 top+bottom 生效为「撑满」。 */
+  :global(.siyuan-floating-toc-plugin-container[data-bazaar-inline="true"]) {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: 0;
+    height: auto;
+    overflow: visible;
+    flex: none;
+    z-index: 999;
+  }
+
+  /* 嵌入态的 TOC 本体：必须由 fixed 改为 absolute。
+     原因（CSS 已知陷阱）：.floating-toc 原为 position:fixed，但滑入面板带 transform 过渡，
+     处于带 transform 的祖先子树内时 fixed 会相对该祖先定位，导致 TOC 被甩到面板/弹窗边缘、与 README 脱节。
+     改为 absolute 后相对容器（其右缘 = 面板右侧内边距处）定位，稳定贴合面板内部。
+     ⚠️ 此处 **不写 width/height**：宽度（tocWidth / miniTocWidth / 拖拽）与高度（adaptiveHeight）
+     由 JS 经 computeBazaarInlineStyle 内联同步（内联样式优先级高于本规则）；
+     本规则只负责「把定位从 fixed 切换为 absolute + 贴容器右侧 / 顶部」。 */
+  :global(.siyuan-floating-toc-plugin-container[data-bazaar-inline="true"] .floating-toc) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: auto;
   }
 
   .floating-toc {

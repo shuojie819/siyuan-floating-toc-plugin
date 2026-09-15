@@ -26,6 +26,39 @@ import type FloatingTocPlugin from "../index";
 import FloatingToc from "../FloatingToc.svelte";
 
 /**
+ * 集市（bazaar）大纲的固定（pinned）状态：仅本会话有效，不写入全局配置。
+ *
+ * 用模块级常量承载，保证「同一会话内，TOC 实例销毁重建后状态仍保留」；
+ * 语义与 toggleDockSide 的会话态一致——集市是临时只读视图，不应把其固定状态
+ * 持久化到全局配置，否则会影响普通文档的固定行为（二者必须相互独立）。
+ */
+export const bazaarSessionState = { pinned: false };
+
+/**
+ * 按场景分仓持久化「固定」状态（纯函数，便于单测与变异校验）。
+ *
+ * - 集市（bazaar）：仅更新会话态，不写全局配置（集市不会推挤正文，且其状态本就应独立）；
+ * - 文档及其它：调用 persist() 写全局配置。
+ *
+ * 约定：调用方需先更新自身 `isPinned`，再调用本函数，确保 persist() 读取到的是最新值。
+ *
+ * @param nextPinned 切换后的固定状态
+ * @param deps       依赖集合：是否集市 / 会话态容器 / 文档持久化回调
+ */
+export function applyPinPersistence(
+    nextPinned: boolean,
+    deps: { isBazaar: boolean; session: { pinned: boolean }; persist: () => void }
+): void {
+    if (deps.isBazaar) {
+        // 集市：只落会话态，绝不动全局配置
+        deps.session.pinned = nextPinned;
+        return;
+    }
+    // 文档等：写全局配置
+    deps.persist();
+}
+
+/**
  * Protyle 管理器类
  * 管理所有 protyle 实例的 TOC 组件
  */
@@ -434,9 +467,22 @@ export class ProtyleManager {
         container.className = "siyuan-floating-toc-plugin-container";
         
         if (isBazaar) {
+            // 集市详情页的 README 位于「滑入面板」#configBazaarReadme 内，
+            // 该面板带 transform 过渡。把 TOC 容器直接挂进面板内部，TOC 便会：
+            //   - 随面板滑入/滑出一起移动与显隐；
+            //   - 相对面板（而非弹窗/视口）定位，与 README 上下对齐（修复「错位」）。
+            // 标记 data-bazaar-inline 供 CSS 与 JS 区分「已嵌入面板」；老版本思源若找不到
+            // 面板则走下面的 body 回退路径（不带该标记，维持原逻辑）。
+            const bazaarPanel = document.querySelector('#configBazaarReadme');
             container.dataset.bazaar = "true";
             (container as any)._tocHost = protyleElement;
-            document.body.appendChild(container);
+            if (bazaarPanel instanceof HTMLElement) {
+                container.dataset.bazaarInline = "true";
+                bazaarPanel.appendChild(container);
+            } else {
+                // 回退：旧结构 / 找不到面板 → 维持挂 body 的原行为
+                document.body.appendChild(container);
+            }
         } else {
             protyleElement.appendChild(container);
         }
