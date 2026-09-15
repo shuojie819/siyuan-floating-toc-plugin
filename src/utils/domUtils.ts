@@ -291,9 +291,18 @@ export interface BazaarInlineStyleParams {
  * 宽度必须由 JS 同步，才能让用户可见能力在集市里生效：
  *   - 展开态宽度 = effectiveTocWidth（跟随「拖拽改宽」的 tocWidth，及窄屏 200 兜底）；
  *   - 折叠态宽度 = miniTocWidth（跟随设置项「Mini 大纲宽度」）。
- * 高度：
- *   - adaptiveHeight → `height: auto`（贴合内容，不拉满面板高度）；
+ * 高度（**两个分支都必须有上界**，否则列表不可滚）：
+ *   - adaptiveHeight → `height: auto; max-height: 100%`（贴合内容，但不超出容器）；
  *   - 否则 → `height: 100%`（撑满容器 = 面板可用高度）。
+ *
+ * ⚠️ adaptiveHeight 分支**必须**同时给出 max-height，不能只写 `height: auto`：
+ * 容器 `[data-bazaar-inline="true"]` 是 `position:absolute; top:16px; bottom:16px`（高度确定），
+ * 而 `.floating-toc` 是 `position:absolute`。若只给 `height: auto`，其高度 = 内容高度（无上界），
+ * 内部 `.toc-panel{flex:1;overflow:hidden}` / `.toc-content{flex:1;overflow-y:auto}` **永不产生溢出**，
+ * 于是标题列表无法上下滚动、超出面板的部分被直接裁掉（用户报告：集市里看不到下方标题）。
+ * 这里沿用文档场景（FloatingToc.svelte 中 `max-height: ${maxHeight}px; height: auto;`）的既有模式，
+ * 内联态下容器的确定高度即为天然上界，故用 `100%` 即可，无需 JS 计算 px。
+ * 百分比可解析：`.floating-toc` 绝对定位，其包含块 = 容器，而容器高度由 top/bottom 撑开、是确定值。
  *
  * @param p 参数集合
  * @returns 可直接赋给 `.floating-toc` 的 style 字符串
@@ -301,7 +310,7 @@ export interface BazaarInlineStyleParams {
 export function computeBazaarInlineStyle(p: BazaarInlineStyleParams): string {
     const w = p.isExpanded ? p.effectiveTocWidth : p.miniTocWidth;
     return p.adaptiveHeight
-        ? `width: ${w}px; height: auto;`
+        ? `width: ${w}px; height: auto; max-height: 100%;`
         : `width: ${w}px; height: 100%;`;
 }
 
