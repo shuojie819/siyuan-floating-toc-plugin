@@ -59,6 +59,9 @@ export function getTocHostElement(candidate: HTMLElement): HTMLElement | null {
     // 不再作为 TOC 宿主。比仅依赖 shouldShowToc 更稳健，且普通文档 .protyle 不在任何 AI 容器内，
     // closest 不会命中，不受影响；搜索/历史/集市等既有逻辑也不受影响。
     if (isAiOrChatPanel(candidate)) return null;
+    // 双保险（Issue #50）：第三方插件浮层（popover / siyuan-comment-*）内的 .protyle 是弹层迷你编辑器，
+    // 不是文档，直接不作为宿主。与 shouldShowToc 的同类闸门互为兜底，避免仅依赖单条路径。
+    if (isFloatingPopoverPanel(candidate)) return null;
     if (candidate.id === "configBazaarReadme") return candidate;
     if (candidate.classList.contains("config-bazaar__readme")) return candidate;
     if (candidate.classList.contains("config-bazaar__panel")) return candidate;
@@ -215,6 +218,54 @@ export function isAiOrChatPanel(element: HTMLElement): boolean {
         // 必须整框排除，否则悬浮大纲（含回到顶部/回到底部/刷新 scroll-toolbar）会被误挂到智能体里。
         // .agent-chat__messages / .agent-chat__msg 作为补充兜底，覆盖局部 DOM 片段。
         '.sy__agentChat, .agent-chat, .agent-chat__messages, .agent-chat__msg'
+    );
+}
+
+/**
+ * 判断元素是否位于「浮层 / popover 容器」内（Issue #50）。
+ *
+ * 为什么需要它：
+ * 历史上闪卡（.card__main）、数据库（.av__*）、智能体（.sy__agentChat 等）都是**逐个定向排除**的，
+ * 闸门全在 shouldShowToc() 且都属于「已知内置容器白名单」。第三方插件一旦自建浮层并在其中
+ * new Protyle 渲染一个小编辑器，就没有任何一条既有闸门能命中 → .protyle 被当成文档宿主 → 误挂大纲。
+ * 本函数是第一例「第三方插件浮层」的通用闸门：凡位于浮层/popover 内的 .protyle 一律不作为宿主。
+ *
+ * 实证来源（Issue #50，鲸鱼快速批注 HaoCeans/siyuan-comment v2.8.3）：
+ *   - 其批注弹层模板里存在**字面量带 protyle 类**的元素：`class="protyle siyuan-comment-popover__protyle"`；
+ *   - 该插件确实在弹层内实例化编辑器：`new Protyle(el, ..., {blockId, render})`（共 2 处）；
+ *   - 其所有浮层类名统一以 `siyuan-comment-` 为前缀（含 __editor / __protyle / __header / __body /
+ *     ai-panel__* / slide-veil__* 等）。
+ * 这些容器里的 .protyle 都是「弹层里的迷你编辑器」，不是可阅读/可滚动的文档，不应挂悬浮大纲。
+ *
+ * 选择器说明（证据驱动、最小集）：
+ *   - `.block__popover`：思源**原生**浮层（块引用 / Hover 悬浮预览），其内确实含 .protyle，同样不该挂。
+ *     实测来源：思源全量产物（stage/build 下 app/desktop/mobile/export）中 base.css 定义
+ *     `.block__popover{position:absolute;…;z-index:-1;…}`，export/protyle-method.js 大量引用
+ *     （另有 `.block__popover--open`、`.popover__block`）。
+ *     ⚠️ 注意：思源中**并不存在** `.b3-popover` 这个类（全量产物 grep 0 命中），该名称为常见误传，勿再写回；
+ *     `data-type="popover"` 亦无实测依据，同样不写。
+ *   - `[class*="popover"]`：通用兜底，覆盖任何以 popover 命名的容器（含上面的 `.block__popover`
+ *     与第三方插件如 `siyuan-comment-popover` / `xxx-popover-yyy`）；
+ *   - `[class*="siyuan-comment-"]`：鲸鱼快速批注全部浮层的前缀（issue #50 直接证据）。
+ *   经全仓库检索确认：本项目已支持的正经宿主（主编辑器 `.layout__center .protyle`、搜索预览
+ *   `.search__preview`、历史 `.history__text`、集市 `#configBazaarReadme` / `.config-bazaar__*` /
+ *   `.item__readme`）的祖先链上都不含上述任一 token，故不会被误伤（closest 只向上查找，
+ *   文档正文里用户自定义的 popover 类名作为 .protyle 的**后代**也不会命中）。
+ *
+ * @param element 待判定元素（通常为 .protyle）
+ * @returns 是否位于浮层 / popover 容器内
+ */
+export function isFloatingPopoverPanel(element: HTMLElement): boolean {
+    return !!element.closest(
+        // 思源原生浮层：块引用 / Hover 悬浮预览。实测类名为 .block__popover
+        //（思源中并不存在 .b3-popover，该名称为常见误传，勿再写回）。
+        '.block__popover, ' +
+        // 通用兜底：任何以 popover 命名的容器（含上面的 .block__popover，
+        //  以及第三方插件如 siyuan-comment-popover）。
+        '[class*="popover"], ' +
+        // 鲸鱼快速批注（issue #50）：其所有浮层均以 siyuan-comment- 为前缀
+        //（popover / ai-panel / slide-veil 等），故整体排除。
+        '[class*="siyuan-comment-"]'
     );
 }
 
@@ -391,6 +442,8 @@ export function shouldShowToc(protyleElement: HTMLElement): boolean {
     // 闪卡 / 卡片复习场景（含浮窗、全屏、卡片预览对话框）不挂 TOC
     if (isFlashcardContext(protyleElement)) return false;
     if (isAiOrChatPanel(protyleElement)) return false;
+    // 第三方插件浮层（popover / siyuan-comment-*）内的 .protyle 不挂 TOC（Issue #50：鲸鱼快速批注批注弹层）
+    if (isFloatingPopoverPanel(protyleElement)) return false;
     if (isGraphView(protyleElement)) return false;
     if (protyleElement.closest('.protyle-wysiwyg__embed')) return false;
     
