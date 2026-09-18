@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.34] - 2026-09-19
+
+### Fixed
+- **悬浮大纲不再出现在第三方插件面板里（#50）**：*鲸鱼快速批注*（`HaoCeans/siyuan-comment`）的批注弹层会渲染一个真实的 Protyle 编辑器（实测其产物中存在 `<div class="protyle siyuan-comment-popover__protyle">`，并以 `new Protyle(...)` 实例化），因此被本插件的宿主识别命中，导致批注弹层里被挂上了悬浮大纲。
+  - 新增**通用「浮层」闸门** `isFloatingPopoverPanel`，双保险接入 `getTocHostElement()`（返回 `null`）与 `shouldShowToc()`（返回 `false`），匹配：
+    - `.block__popover` —— 思源原生的块引用 / Hover 悬浮预览浮层（**实测类名**；思源中并不存在 `.b3-popover`）
+    - `[class*="popover"]` —— 面向"以 popover 命名的容器"的通用兜底
+    - `[class*="siyuan-comment-"]` —— 鲸鱼快速批注插件的所有浮层前缀
+  - 顺带收敛：思源原生块引用悬浮预览（`.block__popover`，其内同样含 `.protyle`）此前也缺少闸门，现一并排除。
+- 此前的排除闸门都是「**已知内置容器白名单**」（闪卡 / 数据库 / 智能体 / 图谱等），对第三方插件的界面从未覆盖；这是第一道**通用型**闸门。
+
+### Tests
+- 新增 `src/__tests__/popoverPanel.spec.ts`（15 例）：使用对方产物的**真实类名串**、分类覆盖、**6 条反向防误伤用例**（覆盖我们确实支持的界面：主编辑器 / 搜索预览 / 搜索文档 / 文件历史 / 历史预览 / 集市 README），以及一个 mock 端到端用例（驱动 `checkProtyles`）。
+- 变异校验：移任一处接线 → 5~6 条变红；移除通用 `[class*="popover"]` 分支 → 恰好 1 条变红（即钉住该分支的那条）。
+
+### Notes
+- **测试：215 passed / 22 files**（上一版 200）。上一版的 21 个 spec 文件**逐字节未改动**。
+- 构建干净、无 Sass 弃用警告；`tsc` 仍为同样 15 条既有错误，且均不在本次改动文件中。
+- `package.zip` 内含 `plugin.json` 版本 = **0.1.34**。
+
 ## [0.1.33] - 2026-09-16
 
 ### Fixed
