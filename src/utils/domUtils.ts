@@ -222,6 +222,45 @@ export function isAiOrChatPanel(element: HTMLElement): boolean {
 }
 
 /**
+ * 智能体（Agent）容器选择器：最外层 dock 面板 `.sy__agentChat` + 内层总包裹 `.agent-chat`。
+ *
+ * 与 {@link isAiOrChatPanel} 中的对应 token 保持一致（同一份真实类名，避免两处漂移）。
+ * 抽为常量供触发侧（MutationObserver 过滤）复用，语义与 isProtyleRelatedElement 同级。
+ */
+export const AGENT_CONTAINER_SELECTOR = '.sy__agentChat, .agent-chat';
+
+/**
+ * 判定节点是否与思源「智能体（Agent）」容器相关（Issue #52 的**触发侧**判定）。
+ *
+ * 存在的理由（为什么必须有它）：
+ *   清理循环（protyleManager.checkProtyles）虽然已经把 `.sy__agentChat` / `.agent-chat`
+ *   纳入 isCoveredByDialog 白名单，但它只在 checkProtyles 被调用时才求值。而触发 checkProtyles
+ *   的 MutationObserver 过滤逻辑此前**完全不认智能体容器**，且 3.8.5 中「智能体全屏」切换
+ *   没有任何 agent+fullscreen 专属类名（实测）→ 该轮扫描压根没被触发 → 闸门形同虚设。
+ *   本函数把「与智能体容器相关的 DOM 变更」显式暴露给观察器，使其能即时置 shouldCheck。
+ *
+ * 覆盖三种相关关系（子树监听 subtree:true 下，任一都会到来）：
+ *   1) 节点**自身**是智能体容器（`.sy__agentChat` / `.agent-chat`）——容器被添加/移除/改类；
+ *   2) 节点**包含**智能体容器（整块子树被添加/移除，如气泡、面板整体换代）；
+ *   3) 节点**位于**智能体容器内部（子节点增删、内部元素 class 等属性变化）。
+ *
+ * 注意方向性：closest 只向上、querySelector/matches 只向下，因此**无关节点**（普通文档、
+ * 搜索/历史/集市）的祖先链上都不含该 token，不会被误判；反之容器内的任何变动都能命中。
+ *
+ * @param node 待判定节点（可为 addedNodes / removedNodes 的成员，或 mutation.target）
+ * @returns 是否与智能体容器相关
+ */
+export function isAgentContainerRelated(node: Node | null | undefined): boolean {
+    if (!(node instanceof HTMLElement)) return false;
+    // 1) 节点自身是智能体容器
+    if (node.matches(AGENT_CONTAINER_SELECTOR)) return true;
+    // 2) 节点包含智能体容器（整块子树）
+    if (node.querySelector(AGENT_CONTAINER_SELECTOR)) return true;
+    // 3) 节点位于智能体容器内部
+    return node.closest(AGENT_CONTAINER_SELECTOR) !== null;
+}
+
+/**
  * 判断元素是否位于「浮层 / popover 容器」内（Issue #50）。
  *
  * 为什么需要它：
@@ -491,14 +530,44 @@ export function isCoveredByBazaar(element: HTMLElement): boolean {
 }
 
 /**
- * 检查元素是否被打开的弹窗（dialog）遮挡
- * 用于设置弹窗打开时隐藏/销毁文档 TOC，同时保留弹窗内部的 TOC（如集市详情弹窗里的 README 大纲）
+ * 检查元素是否被「会遮挡文档的覆盖容器」遮挡。
+ *
+ * ⚠️ 本列表语义已扩展（Issue #52）：不再局限于**纯 dialog**，而是
+ * 「dialog + 面板 + 全屏接管的 dock 容器」三类覆盖容器的并集 ——
+ *   - dialog：`.b3-dialog` / `.b3-dialog--open` / `[data-key^="dialog-"]`；
+ *   - 面板：`.search__panel` / `.search__preview`（全局搜索）、
+ *     `.history__panel` / `.history__side` / `.history__text`（文件历史）；
+ *   - 全屏接管的 dock 容器：`.sy__agentChat` / `.agent-chat`（智能体，Issue #52）。
+ *
+ * 为什么把智能体容器放进来（Issue #52 实证来源，真机 DevTools 运行时读数）：
+ *   智能体「沉浸式全屏」时，其最外层 dock 容器实测为
+ *   `class="fn__flex-1 fn__flex-column file-tree sy__agentChat dockPanel layout__t"`，
+ *   尺寸 1920×692（占满视口）、z-index = 8；
+ *   而文档宿主 protyle 的内容区**仍有真实尺寸**（1256×643 @ (278,41)），
+ *   因此 isElementVisible(host) 判为「可见」→ TOC 不会被销毁；
+ *   TOC 本体为 `position: fixed; z-index: 18`（= window.siyuan.zIndex(19) - 1，
+ *   即 v0.1.30 的收敛规则），18 > 8 → 大纲被画在智能体全屏界面之上（截图里压在右上/左上角）。
+ *   本列表此前**不含**智能体容器，故无任何规则命中，TOC 保持显示。
+ *
+ * 本函数已有的「矩形重叠」判定**天然区分智能体停靠 / 全屏两态**，无需额外分支：
+ *   - 智能体**停靠在右侧 dock** 时：dock 位于文档右侧、与文档宿主矩形**不重叠**
+ *     → 不判为被覆盖 → 大纲照常显示 ✅（期望行为，防误伤）；
+ *   - 智能体**全屏**时：容器覆盖整个视口、与文档宿主矩形**重叠**
+ *     → 判为被覆盖 → 隐藏 ✅（即 Issue #52 期望）。
+ *
+ * 用于（设置弹窗/搜索/历史/智能体全屏等）遮挡文档时隐藏/销毁文档 TOC，
+ * 同时保留覆盖容器内部的 TOC（`dialog === element || dialog.contains(element)` 时跳过）。
+ *
  * @param element 元素
- * @returns 是否被弹窗遮挡
+ * @returns 是否被覆盖容器遮挡
  */
 export function isCoveredByDialog(element: HTMLElement): boolean {
     const dialogs = document.querySelectorAll(
-        '.b3-dialog, .b3-dialog--open, [data-key^="dialog-"], .search__panel, .search__preview, .history__panel, .history__side, .history__text'
+        '.b3-dialog, .b3-dialog--open, [data-key^="dialog-"], .search__panel, .search__preview, .history__panel, .history__side, .history__text, ' +
+        // Issue #52：智能体（Agent）全屏容器。全屏时与文档宿主矩形重叠 → 隐藏大纲；
+        // 停靠右侧 dock 时与文档宿主不重叠 → 大纲照常显示（防误伤）。
+        // `.sy__agentChat` = 最外层 dock 面板；`.agent-chat` = 内层总包裹（覆盖不同版本/形态）。
+        '.sy__agentChat, .agent-chat'
     );
     const elementRect = element.getBoundingClientRect();
     if (elementRect.width === 0 || elementRect.height === 0) return false;
@@ -799,6 +868,22 @@ export function isElementVisible(element: HTMLElement): boolean {
     }
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
+}
+
+/**
+ * 低频兜底扫描的「是否应当执行」纯判定（Issue #52 第二轮修复 (b)）。
+ *
+ * 语义：页面处于不可见状态（`document.hidden === true`）时无需扫描 —— 用户看不到界面，
+ * 也省去每秒一次无意义的开销；其余情况均执行。
+ *
+ * 抽为纯函数的目的：把「跳过条件」与定时器/调度解耦，便于单测与变异校验
+ * （变异「去掉 document.hidden 跳过判定」时应使对应用例变红）。
+ *
+ * @param hidden `document.hidden` 的取值
+ * @returns 是否应当执行本轮兜底扫描
+ */
+export function shouldRunIdleSweep(hidden: boolean): boolean {
+    return hidden !== true;
 }
 
 // ============================================
