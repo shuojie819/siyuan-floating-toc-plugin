@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.35] - 2026-09-25
+
+### Fixed
+- **智能体（Agent）进入沉浸式全屏后，文档的悬浮大纲仍漂浮在全屏界面之上（#52）**。修复分两层：
+  1. **覆盖判定**：`isCoveredByDialog()` 的覆盖容器白名单加入 `.sy__agentChat` / `.agent-chat`。该函数以**矩形重叠**判定，因此天然区分两种状态 —— 智能体**停靠**在右侧 dock 时与文档矩形不重叠 → 大纲照常显示；**全屏**时容器覆盖整个视口 → 判定被覆盖 → 隐藏。
+  2. **触发链（本轮关键）**：仅加入判定条件是不够的 —— 真正执行销毁的清理扫描，过去只由「启动一次 + MutationObserver 的定向过滤」触发，而**智能体全屏切换不在过滤条件内**，导致上述判定从未被求值（表现为"代码改了却毫无效果"）。为此补上：
+     - **(a)** 观察器过滤新增智能体容器（`.sy__agentChat` / `.agent-chat` 的节点增删与属性变化）→ 近乎即时触发；
+     - **(b)** 新增**低频兜底扫描**（1000ms，复用既有防抖；`document.hidden` 时跳过；插件卸载时清理）→ **不依赖任何具体 DOM 信号**，避免再次因思源改版或未知的界面切换方式而失效。
+
+### Changed
+- 顺带收敛：思源原生块引用 / Hover 悬浮预览（`.block__popover`）不再挂载悬浮大纲。
+
+### Tests
+- 新增 3 个测试文件：`agentFullscreen.spec.ts`（14 例）、`agentFullscreenSweep.spec.ts`（14 例）、`agentFullscreenObserver.spec.ts`（2 例，**MutationObserver 接线级**）。
+- 多变异校验：移除覆盖容器 / 去掉矩形重叠判定 / 禁用兜底扫描 / 去掉 `document.hidden` 跳过 / **删除观察器接线** —— 每一项都至少让一条用例变红。
+
+### Notes
+- **测试：245 passed / 25 files，0 failed**（上一版 215 / 22）。上一版的测试文件**逐字节未改动**。
+- 构建：`vite build` 成功，无 Sass 弃用警告；`tsc` 仍为同样 15 条既有错误，**本次新增 0 条**。
+- `package.zip` 内含 `plugin.json` 版本 = **0.1.35**。
+
 ## [0.1.34] - 2026-09-19
 
 ### Fixed

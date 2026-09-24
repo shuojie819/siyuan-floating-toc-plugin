@@ -17,6 +17,8 @@ import {
     isCoveredByBazaar,
     isCoveredByDialog,
     isAiOrChatPanel,
+    isAgentContainerRelated,
+    shouldRunIdleSweep,
     isElementVisible,
     isOrphanTocContainer
 } from "../utils/domUtils";
@@ -33,6 +35,29 @@ import FloatingToc from "../FloatingToc.svelte";
  * 持久化到全局配置，否则会影响普通文档的固定行为（二者必须相互独立）。
  */
 export const bazaarSessionState = { pinned: false };
+
+/**
+ * 智能体（Agent）全屏低频兜底扫描的间隔（毫秒）——Issue #52 第二轮修复的核心 (b)。
+ *
+ * ⭐ 为什么需要它（本项目多次因「猜思源的 DOM 信号」而失效的教训）：
+ *   历史上本插件的显隐/清理闸门多次被思源的 DOM 变更击穿，且每次都是**某个具体信号失效**：
+ *     - `.b3-popover` 这个类在思源中**根本不存在**（误传），据此写的判定从未命中；
+ *     - 集市显示类 `config-bazaar__readme--show` 在 3.8.3+ 被改名为 `config__view--show`；
+ *     - 智能体「沉浸式全屏」在 3.8.5 中**没有任何 agent+fullscreen 专属类名/属性**
+ *       能可靠观测到（切换方式未知，可能只是内部类变化或搬动 DOM）。
+ *   只要继续依赖「猜某个具体 DOM 信号」，就随时可能再次失效。因此本轮新增**不依赖任何 DOM 信号**
+ *   的定时兜底：无论思源如何切换全屏、无论观察器是否命中，每一轮兜底都会调用既有防抖调度入口，
+ *   最终跑到 checkProtyles 的清理循环，命中 isCoveredByDialog / !shouldShowToc / !isElementVisible
+ *   等闸门，把智能体全屏时仍在漂浮的文档 TOC 销毁掉。这是唯一「不靠猜」的保证。
+ *
+ * 代价评估（为什么可以接受每秒一次）：
+ *   - 每轮只调用 scheduleCheckProtyles（防抖入口），并不会每次真扫；连续抖动会被防抖合并；
+ *   - 真正执行时，清理循环只遍历 `tocInstances`（通常仅 1~数个宿主），开销极小；
+ *   - 页面不可见（`document.hidden`）时直接跳过，后台不产生任何扫描。
+ *
+ * 取值：设为 `<= 0` 表示**禁用**该兜底（仅用于单测/变异校验；生产恒为 1000）。
+ */
+export const IDLE_SWEEP_INTERVAL_MS: number = 1000;
 
 /**
  * 按场景分仓持久化「固定」状态（纯函数，便于单测与变异校验）。
@@ -66,6 +91,7 @@ export class ProtyleManager {
     private plugin: FloatingTocPlugin;
     private observer: MutationObserver | undefined;
     private checkProtylesDebounceTimer: number | undefined;
+    private idleSweepInterval: number | undefined;
     private clickDelegationHandler: ((event: MouseEvent) => void) | null = null;
 
     constructor(plugin: FloatingTocPlugin) {
@@ -91,6 +117,11 @@ export class ProtyleManager {
                         if (isBreadcrumbElement(mutation.target)) {
                             shouldCheck = true;
                         }
+                        // 智能体（Agent）容器或其内部发生子节点增删 → 立即触发检查（Issue #52 (a)）。
+                        // 观察器 config 含 subtree:true，故容器内任意层级的新增/移除都会送到这里。
+                        if (isAgentContainerRelated(mutation.target)) {
+                            shouldCheck = true;
+                        }
                         // 监听集市页面的显示
                         if (mutation.target.id === 'configBazaarReadme' ||
                             mutation.target.classList.contains('config-bazaar__readme')) {
@@ -102,6 +133,10 @@ export class ProtyleManager {
                     for (const node of mutation.addedNodes) {
                         if (node instanceof HTMLElement) {
                             if (isProtyleRelatedElement(node)) {
+                                shouldCheck = true;
+                            }
+                            // 智能体容器（自身/包含/内部）被添加 → 立即触发检查（Issue #52 (a)）
+                            if (isAgentContainerRelated(node)) {
                                 shouldCheck = true;
                             }
                             if (node.classList.contains('search__list')) {
@@ -148,6 +183,10 @@ export class ProtyleManager {
                             if (isProtyleRelatedElement(node)) {
                                 shouldCheck = true;
                             }
+                            // 智能体容器（自身/包含/内部）被移除 → 立即触发检查（Issue #52 (a)）
+                            if (isAgentContainerRelated(node)) {
+                                shouldCheck = true;
+                            }
                             // 监听集市页面元素的移除
                             if (node.id === 'configBazaarReadme' ||
                                 node.classList.contains('config-bazaar__readme')) {
@@ -173,6 +212,11 @@ export class ProtyleManager {
                     }
                 } else if (mutation.type === 'attributes') {
                     if (mutation.target instanceof HTMLElement) {
+                        // 智能体容器（或其内部元素）class/style 等属性变化 → 立即触发检查（Issue #52 (a)）。
+                        // 观察器 attributeFilter 含 'class'，故全屏切换若仅改类名也能被覆盖。
+                        if (isAgentContainerRelated(mutation.target)) {
+                            shouldCheck = true;
+                        }
                         if (isSearchAttributeChanged(mutation.target, mutation.attributeName)) {
                             searchResultChanged = true;
                             shouldCheck = true;
@@ -228,6 +272,40 @@ export class ProtyleManager {
         
         // 设置点击事件委托
         this.setupClickDelegation();
+
+        // 启动低频兜底扫描（Issue #52 (b)）：不依赖任何 DOM 信号的保证。
+        // 生命周期与观察器一致：monitorProtyles 在 onLayoutReady 中调用，cleanup 在 onunload 中清理。
+        this.startIdleSweep();
+    }
+
+    /**
+     * 启动低频兜底扫描定时器（Issue #52 第二轮修复 (b)）。
+     *
+     * 每 {@link IDLE_SWEEP_INTERVAL_MS} 毫秒：若无 `document.hidden`（页面可见），
+     * 则调用**防抖调度入口** {@link debouncedCheckProtyles}（而非裸调 checkProtyles），
+     * 以复用防抖、避免高频抖动下的重复扫描。
+     *
+     * 幂等：重复调用会先停掉旧定时器，避免重复启动导致的多重定时器泄漏。
+     */
+    startIdleSweep(): void {
+        this.stopIdleSweep();
+        // 常量 <= 0 表示显式禁用（仅用于单测/变异校验；生产恒为 1000）
+        if (IDLE_SWEEP_INTERVAL_MS <= 0) return;
+        this.idleSweepInterval = window.setInterval(() => {
+            // 页面不可见时跳过：用户看不到界面，无需扫描
+            if (!shouldRunIdleSweep(document.hidden)) return;
+            this.debouncedCheckProtyles();
+        }, IDLE_SWEEP_INTERVAL_MS);
+    }
+
+    /**
+     * 停止低频兜底扫描定时器（幂等）。
+     */
+    stopIdleSweep(): void {
+        if (this.idleSweepInterval !== undefined) {
+            clearInterval(this.idleSweepInterval);
+            this.idleSweepInterval = undefined;
+        }
     }
 
     /**
@@ -576,6 +654,9 @@ export class ProtyleManager {
             clearTimeout(this.checkProtylesDebounceTimer);
             this.checkProtylesDebounceTimer = undefined;
         }
+
+        // 清理低频兜底扫描定时器（Issue #52 (b)），避免卸载后仍在后台运行
+        this.stopIdleSweep();
         
         // 移除点击事件委托
         if (this.clickDelegationHandler) {
